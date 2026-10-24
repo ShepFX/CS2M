@@ -140,7 +140,14 @@ namespace CS2M.UI
             AddBinding(new TriggerBinding<int>(Mod.Name, "SetJoinPort", port => { _joinPort.Update(port); }));
             AddBinding(new TriggerBinding<int>(Mod.Name, "SetHostPort", port => { _hostPort.Update(port); }));
             AddBinding(new TriggerBinding<string>(Mod.Name, "SetUsername",
-                username => { _username.Update(username); }));
+                username =>
+                {
+                    // no trimming while typing (spaces between words); the host checks the name on join
+                    username = new string((username ?? "").Where(c => !char.IsControl(c)).ToArray());
+                    _username.Update(username.Length <= TextRules.MaxUsernameLength
+                        ? username
+                        : username.Substring(0, TextRules.MaxUsernameLength));
+                }));
 
             AddBinding(new TriggerBinding(Mod.Name, "JoinGame", JoinGame));
             AddBinding(new TriggerBinding<string, string, string>(Mod.Name, "JoinSession", JoinSession));
@@ -268,7 +275,7 @@ namespace CS2M.UI
                 settings.LastJoinIp = _joinIPAddress.value;
                 settings.LastJoinPort = _joinPort.value;
             });
-            NetworkInterface.Instance.UpdateLocalPlayerUsername(_username.value);
+            NetworkInterface.Instance.UpdateLocalPlayerUsername(_username.value?.Trim());
             _pendingRecent = new RecentSessions.Entry { Ip = _joinIPAddress.value?.Trim() ?? "", Port = _joinPort.value };
             NetworkInterface.Instance.Connect(new ConnectionConfig(_joinIPAddress.value, _joinPort.value, ""));
         }
@@ -287,7 +294,7 @@ namespace CS2M.UI
             }
 
             SaveConnection(_ => { });
-            NetworkInterface.Instance.UpdateLocalPlayerUsername(_username.value);
+            NetworkInterface.Instance.UpdateLocalPlayerUsername(_username.value?.Trim());
             _pendingRecent = new RecentSessions.Entry
             {
                 Token = token,
@@ -403,7 +410,7 @@ namespace CS2M.UI
                 settings.LastHostPort = _hostPort.value;
                 settings.HostMaxPlayers = _hostMaxPlayers.value;
             });
-            NetworkInterface.Instance.UpdateLocalPlayerUsername(_username.value);
+            NetworkInterface.Instance.UpdateLocalPlayerUsername(_username.value?.Trim());
             NetworkInterface.Instance.StartServer(new ConnectionConfig(_hostPort.value));
         }
 
