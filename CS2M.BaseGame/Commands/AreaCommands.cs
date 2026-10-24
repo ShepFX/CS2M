@@ -55,3 +55,16 @@ namespace CS2M.BaseGame.Commands
         public float Adjustment { get; set; }
     }
 }
+
+namespace CS2M.BaseGame.Commands
+{
+    /// <summary>
+    ///     The random name index of each district on the host. Each game rolls its own index for a new
+    ///     district, so without this the same district has a different name on every PC.
+    /// </summary>
+    public class DistrictNamesCommand : CS2M.API.Commands.CommandBase
+    {
+        public AreaKey[] Districts { get; set; }
+        public int[] Indices { get; set; }
+    }
+}

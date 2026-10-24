@@ -26,6 +26,10 @@ namespace CS2M.BaseGame.Systems
         public Entity StartNode;
         public string SubReplacements;
 
+        // Where the segment/junction was before the change. The other game still has it there, and an upgrade
+        // can move it (elevation or width changes), so it must be looked up by this, not by the new geometry.
+        public CS2M.BaseGame.Commands.NetRef Ref;
+
         public bool SameAs(NetUpgradeState other)
         {
             return Prefab == other.Prefab && HasUpgrades == other.HasUpgrades && Flags == other.Flags &&
@@ -114,7 +118,9 @@ namespace CS2M.BaseGame.Systems
                         continue;
                     }
 
-                    Before[original] = NetUpgradeState.Read(EntityManager, original);
+                    NetUpgradeState before = NetUpgradeState.Read(EntityManager, original);
+                    before.Ref = NetRefs.Describe(EntityManager, original);
+                    Before[original] = before;
                 }
             }
         }
@@ -163,7 +169,7 @@ namespace CS2M.BaseGame.Systems
 
                 if (EntityManager.HasComponent<Edge>(entity))
                 {
-                    EdgeUpgradeData data = DescribeEdge(entity);
+                    EdgeUpgradeData data = DescribeEdge(entity, pair.Value.Ref);
                     if (data != null)
                     {
                         edges.Add(data);
@@ -177,7 +183,7 @@ namespace CS2M.BaseGame.Systems
                         continue;
                     }
 
-                    var data = new NodeUpgradeData { Node = NetRefs.Describe(EntityManager, entity), Prefab = prefab };
+                    var data = new NodeUpgradeData { Node = pair.Value.Ref ?? NetRefs.Describe(EntityManager, entity), Prefab = prefab };
                     ReadUpgrades(entity, out bool has, out uint general, out uint left, out uint right);
                     data.HasUpgrades = has;
                     data.General = general;
@@ -197,7 +203,7 @@ namespace CS2M.BaseGame.Systems
             BaseGameLog.Info($"Road upgrades sent: {edges.Count} segment(s), {nodes.Count} junction(s) changed in place");
         }
 
-        private EdgeUpgradeData DescribeEdge(Entity entity)
+        private EdgeUpgradeData DescribeEdge(Entity entity, CS2M.BaseGame.Commands.NetRef before)
         {
             string prefab = PrefabLookup.Name(_prefabSystem, EntityManager.GetComponentData<PrefabRef>(entity).m_Prefab);
             if (prefab == null || !EntityManager.HasComponent<Curve>(entity))
@@ -209,7 +215,7 @@ namespace CS2M.BaseGame.Systems
             Bezier4x3 b = EntityManager.GetComponentData<Curve>(entity).m_Bezier;
             var data = new EdgeUpgradeData
             {
-                Edge = NetRefs.Describe(EntityManager, entity),
+                Edge = before ?? NetRefs.Describe(EntityManager, entity),
                 Prefab = prefab,
                 Curve = new[] { b.a.x, b.a.y, b.a.z, b.b.x, b.b.y, b.b.z, b.c.x, b.c.y, b.c.z, b.d.x, b.d.y, b.d.z },
                 StartNode = NetRefs.F(EntityManager.GetComponentData<Node>(edge.m_Start).m_Position),

@@ -2,10 +2,11 @@ $bg: rgba(16, 19, 24, 0.86);
 $line: rgba(255, 255, 255, 0.08);
 $muted: rgba(255, 255, 255, 0.6);
 
+// top right, under the game's options cog
 .hud {
     position: absolute;
-    left: 12rem;
-    top: 160rem;
+    right: 12rem;
+    top: 70rem;
     width: 280rem;
     display: flex;
     flex-direction: column;
@@ -119,8 +120,8 @@ $muted: rgba(255, 255, 255, 0.6);
 // hidden state: a small pill with the player count and unread messages
 .collapsed {
     position: absolute;
-    left: 12rem;
-    top: 160rem;
+    right: 12rem;
+    top: 70rem;
     display: flex;
     align-items: center;
     padding: 6rem 10rem;
