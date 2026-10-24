@@ -37,6 +37,12 @@ namespace CS2M.BaseGame.Commands
         public string Prefab { get; set; }
         public uint CreationFlags { get; set; }
         public int RandomSeed { get; set; }
+
+        /// <summary>
+        ///     The existing road this definition rebuilds (e.g. the two halves of a road split by a new junction).
+        /// </summary>
+        public NetRef Original { get; set; }
+
         public float[] Curve { get; set; }
         public float[] Elevation { get; set; }
         public float Length { get; set; }

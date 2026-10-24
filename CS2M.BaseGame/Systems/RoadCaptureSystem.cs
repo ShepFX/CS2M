@@ -28,11 +28,8 @@ namespace CS2M.BaseGame.Systems
             base.OnCreate();
             _toolSystem = World.GetOrCreateSystemManaged<ToolSystem>();
             _prefabSystem = World.GetOrCreateSystemManaged<PrefabSystem>();
-            _definitions = GetEntityQuery(new EntityQueryDesc
-            {
-                All = new[] { ComponentType.ReadOnly<CreationDefinition>(), ComponentType.ReadOnly<NetCourse>() },
-                None = new[] { ComponentType.ReadOnly<OwnerDefinition>() }
-            });
+            // owned definitions are skipped below, but still logged
+            _definitions = GetEntityQuery(ComponentType.ReadOnly<CreationDefinition>(), ComponentType.ReadOnly<NetCourse>());
             RequireForUpdate(_definitions);
         }
 
@@ -41,6 +38,11 @@ namespace CS2M.BaseGame.Systems
             if (Command.CurrentRole == MultiplayerRole.None || Command.SendToAll == null ||
                 !(_toolSystem.activeTool is NetToolSystem))
             {
+                if (_toolSystem.activeTool is NetToolSystem)
+                {
+                    BaseGameLog.Info($"Road capture skipped: role={Command.CurrentRole}, can send={Command.SendToAll != null}");
+                }
+
                 return;
             }
 
@@ -50,15 +52,23 @@ namespace CS2M.BaseGame.Systems
                 foreach (Entity entity in entities)
                 {
                     CreationDefinition definition = EntityManager.GetComponentData<CreationDefinition>(entity);
-                    // Permanent = one we created from another player's command; m_Original = editing an
-                    // existing road (replace/upgrade), not synced yet
-                    if ((definition.m_Flags & (CreationFlags.Permanent | CreationFlags.Delete)) != 0 ||
-                        definition.m_Original != Entity.Null)
+                    LogDefinition(entity, definition);
+                    // Permanent = one we created from another player's command. Owned definitions (a
+                    // building's sub-roads) come from their owner. m_Original = rebuilding an existing road,
+                    // which a junction does to the road it joins: those are sent with the original described.
+                    if ((definition.m_Flags & CreationFlags.Permanent) != 0 || EntityManager.HasComponent<OwnerDefinition>(entity))
                     {
                         continue;
                     }
 
-                    string prefab = PrefabLookup.Name(_prefabSystem, definition.m_Prefab);
+                    NetRef original = NetRefs.Describe(EntityManager, definition.m_Original);
+                    if (definition.m_Original != Entity.Null && original.Kind == 0)
+                    {
+                        continue;
+                    }
+
+                    // a rebuilt road may keep its prefab (m_Prefab null): the receiver uses the original's
+                    string prefab = definition.m_Prefab != Entity.Null ? PrefabLookup.Name(_prefabSystem, definition.m_Prefab) : "";
                     if (prefab == null)
                     {
                         continue;
@@ -71,6 +81,7 @@ namespace CS2M.BaseGame.Systems
                         Prefab = prefab,
                         CreationFlags = (uint)definition.m_Flags,
                         RandomSeed = definition.m_RandomSeed,
+                        Original = original,
                         Curve = new[]
                         {
                             curve.a.x, curve.a.y, curve.a.z, curve.b.x, curve.b.y, curve.b.z,
@@ -79,12 +90,13 @@ namespace CS2M.BaseGame.Systems
                         Elevation = new[] { course.m_Elevation.x, course.m_Elevation.y },
                         Length = course.m_Length,
                         FixedIndex = course.m_FixedIndex,
-                        Start = Pos(course.m_StartPosition),
-                        End = Pos(course.m_EndPosition)
+                        Start = Pos(EntityManager, course.m_StartPosition),
+                        End = Pos(EntityManager, course.m_EndPosition)
                     });
                 }
             }
 
+            BaseGameLog.Info($"Road capture ran: tool={_toolSystem.activeTool?.toolID}, {courses.Count} course(s) to send");
             if (courses.Count == 0)
             {
                 return;
@@ -104,11 +116,24 @@ namespace CS2M.BaseGame.Systems
             BaseGameLog.Info($"Road sent: {courses.Count} course(s), first {courses[0].Prefab}");
         }
 
-        private CoursePosData Pos(CoursePos pos)
+        // Diagnostics for junctions: every road definition on the apply frame, including skipped ones
+        private void LogDefinition(Entity entity, CreationDefinition definition)
+        {
+            NetCourse course = EntityManager.GetComponentData<NetCourse>(entity);
+            NetRef original = NetRefs.Describe(EntityManager, definition.m_Original);
+            NetRef start = NetRefs.Describe(EntityManager, course.m_StartPosition.m_Entity);
+            NetRef end = NetRefs.Describe(EntityManager, course.m_EndPosition.m_Entity);
+            BaseGameLog.Info($"Road def: prefab={PrefabLookup.Name(_prefabSystem, definition.m_Prefab)} flags={definition.m_Flags} " +
+                             $"original={original.Kind} start={start.Kind}@{course.m_StartPosition.m_SplitPosition:0.###} " +
+                             $"[{course.m_StartPosition.m_Flags}] end={end.Kind}@{course.m_EndPosition.m_SplitPosition:0.###} " +
+                             $"[{course.m_EndPosition.m_Flags}] owner={EntityManager.HasComponent<OwnerDefinition>(entity)}");
+        }
+
+        public static CoursePosData Pos(EntityManager em, CoursePos pos)
         {
             return new CoursePosData
             {
-                Entity = NetRefs.Describe(EntityManager, pos.m_Entity),
+                Entity = NetRefs.Describe(em, pos.m_Entity),
                 Position = NetRefs.F(pos.m_Position),
                 Rotation = new[] { pos.m_Rotation.value.x, pos.m_Rotation.value.y, pos.m_Rotation.value.z, pos.m_Rotation.value.w },
                 Elevation = new[] { pos.m_Elevation.x, pos.m_Elevation.y },

@@ -44,6 +44,9 @@ namespace CS2M.Settings
         [SettingsUIHidden]
         public string LastUsername { get; set; }
 
+        [SettingsUIHidden]
+        public bool HudCollapsed { get; set; }
+
         public ModSettings(IMod mod) : base(mod)
         {
             SetDefaults();

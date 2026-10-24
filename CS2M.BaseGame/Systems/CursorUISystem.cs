@@ -18,15 +18,21 @@ namespace CS2M.BaseGame.Systems
         private ValueBinding<string> _cursors;
         private string _last = "[]";
 
+        // Players for the multiplayer HUD: [{"n": name, "c": colour, "a": activity, "me": bool}], empty when not in a session
+        private ValueBinding<string> _players;
+        private string _lastPlayers = "[]";
+
         protected override void OnCreate()
         {
             base.OnCreate();
             _cameraUpdateSystem = World.GetOrCreateSystemManaged<CameraUpdateSystem>();
             AddBinding(_cursors = new ValueBinding<string>("CS2M", "Cursors", "[]"));
+            AddBinding(_players = new ValueBinding<string>("CS2M", "Players", "[]"));
         }
 
         protected override void OnUpdate()
         {
+            UpdatePlayers();
             string json = "[]";
             if (CursorSystem.Remote.Count != 0 && _cameraUpdateSystem.TryGetViewer(out Viewer viewer))
             {
@@ -63,6 +69,32 @@ namespace CS2M.BaseGame.Systems
             {
                 _cursors.Update(json);
                 _last = json;
+            }
+        }
+
+        private void UpdatePlayers()
+        {
+            string json = "[]";
+            if (CS2M.API.Commands.Command.CurrentRole != CS2M.API.Commands.MultiplayerRole.None)
+            {
+                string role = CS2M.API.Commands.Command.CurrentRole == CS2M.API.Commands.MultiplayerRole.Server ? " (host)" : "";
+                var sb = new StringBuilder("[");
+                sb.Append("{\"n\":\"").Append(Escape((CS2M.API.Commands.Command.GetLocalUsername?.Invoke() ?? "You") + role))
+                    .Append("\",\"c\":\"#D6FF3F\",\"a\":\"\",\"me\":true}");
+                foreach (CursorSystem.RemoteCursor cursor in CursorSystem.Remote.Values)
+                {
+                    sb.Append(",{\"n\":\"").Append(Escape(cursor.Name))
+                        .Append("\",\"c\":\"#").Append(ColorUtility.ToHtmlStringRGB(cursor.Color))
+                        .Append("\",\"a\":\"").Append(Escape(cursor.Activity)).Append("\",\"me\":false}");
+                }
+
+                json = sb.Append(']').ToString();
+            }
+
+            if (json != _lastPlayers)
+            {
+                _players.Update(json);
+                _lastPlayers = json;
             }
         }
 

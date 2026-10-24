@@ -140,7 +140,8 @@ namespace CS2M.BaseGame.Systems
 
         public static void OnRemoteCursor(CursorCommand command)
         {
-            if (!Remote.TryGetValue(command.SenderId, out RemoteCursor cursor))
+            bool joined = !Remote.TryGetValue(command.SenderId, out RemoteCursor cursor);
+            if (joined)
             {
                 cursor = new RemoteCursor { Color = Palette[(Remote.Count + 1) % Palette.Length] };
                 Remote[command.SenderId] = cursor;
@@ -157,6 +158,10 @@ namespace CS2M.BaseGame.Systems
             cursor.Activity = command.Activity ?? "";
             cursor.OnMap = command.OnMap;
             cursor.LastSeen = UnityEngine.Time.realtimeSinceStartup;
+            if (joined)
+            {
+                CS2M.API.Chat.Instance?.PrintGameMessage($"{cursor.Name} joined");
+            }
         }
 
         private static void Smooth()
@@ -181,7 +186,11 @@ namespace CS2M.BaseGame.Systems
                 }
             }
 
-            stale.ForEach(id => Remote.Remove(id));
+            foreach (int id in stale)
+            {
+                CS2M.API.Chat.Instance?.PrintGameMessage($"{Remote[id].Name} left");
+                Remote.Remove(id);
+            }
         }
     }
 }

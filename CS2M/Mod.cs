@@ -87,6 +87,11 @@ namespace CS2M
             updateSystem.UpdateAfter<HostAuthoritySystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
             updateSystem.UpdateBefore<SpawnCaptureSystem, GenerateObjectsSystem>(SystemUpdatePhase.Modification1);
             updateSystem.UpdateBefore<ChargeCaptureSystem, ToolApplySystem>(SystemUpdatePhase.ApplyTool);
+            // Buildings and props placed with the object tool; taxes, budgets and the host's population
+            updateSystem.UpdateBefore<PlaceCaptureSystem, ApplyObjectsSystem>(SystemUpdatePhase.ApplyTool);
+            updateSystem.UpdateAfter<PlaceApplySystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
+            updateSystem.UpdateAfter<EconomySyncSystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
+            updateSystem.UpdateBefore<PopulationDisplaySystem, Game.UI.InGame.ToolbarBottomUISystem>(SystemUpdatePhase.UIUpdate);
             // Other players' cursors: share ours, draw theirs as rings with name labels
             updateSystem.UpdateAfter<CursorSystem, ToolRaycastSystem>(SystemUpdatePhase.Raycast);
             updateSystem.UpdateBefore<CursorOverlaySystem, OverlayRenderSystem>(SystemUpdatePhase.Rendering);

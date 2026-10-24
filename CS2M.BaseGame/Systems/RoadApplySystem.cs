@@ -48,8 +48,16 @@ namespace CS2M.BaseGame.Systems
                 var buffer = new EntityCommandBuffer(Allocator.Temp);
                 foreach (NetCourseData data in command.Courses ?? new NetCourseData[0])
                 {
-                    Entity prefab = PrefabLookup.Find(EntityManager, _prefabSystem, data.Prefab);
-                    if (prefab == Entity.Null)
+                    Entity original = Entity.Null;
+                    if (data.Original != null && data.Original.Kind != 0 &&
+                        (!NetRefs.Resolve(EntityManager, data.Original, out original) || original == Entity.Null))
+                    {
+                        BaseGameLog.Warn($"Road received that rebuilds a road missing here at {NetRefs.V3(data.Original.A)}");
+                        continue;
+                    }
+
+                    Entity prefab = string.IsNullOrEmpty(data.Prefab) ? Entity.Null : PrefabLookup.Find(EntityManager, _prefabSystem, data.Prefab);
+                    if (prefab == Entity.Null && (original == Entity.Null || !string.IsNullOrEmpty(data.Prefab)))
                     {
                         BaseGameLog.Warn($"Road received with an unknown prefab {data.Prefab}");
                         continue;
@@ -58,6 +66,7 @@ namespace CS2M.BaseGame.Systems
                     var definition = new CreationDefinition
                     {
                         m_Prefab = prefab,
+                        m_Original = original,
                         m_Flags = (CreationFlags)data.CreationFlags | CreationFlags.Permanent,
                         m_RandomSeed = data.RandomSeed
                     };
@@ -70,8 +79,8 @@ namespace CS2M.BaseGame.Systems
                         m_Elevation = new float2(data.Elevation[0], data.Elevation[1]),
                         m_Length = data.Length,
                         m_FixedIndex = data.FixedIndex,
-                        m_StartPosition = Pos(data.Start),
-                        m_EndPosition = Pos(data.End)
+                        m_StartPosition = Pos(EntityManager, data.Start),
+                        m_EndPosition = Pos(EntityManager, data.End)
                     };
 
                     Entity entity = buffer.CreateEntity(_definitionArchetype);
@@ -87,9 +96,9 @@ namespace CS2M.BaseGame.Systems
             }
         }
 
-        private CoursePos Pos(CoursePosData data)
+        public static CoursePos Pos(EntityManager em, CoursePosData data)
         {
-            if (!NetRefs.Resolve(EntityManager, data.Entity, out Entity entity))
+            if (!NetRefs.Resolve(em, data.Entity, out Entity entity))
             {
                 // the junction or road it snapped to isn't here; the road still gets built, unconnected
                 BaseGameLog.Warn($"Road end connects to something missing here at {NetRefs.V3(data.Position)}");

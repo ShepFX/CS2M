@@ -169,6 +169,18 @@ namespace CS2M.BaseGame.Systems
 
             _lastMoneySend = now;
             Command.SendToAll?.Invoke(new MoneyCommand { Money = GetMoney() });
+            Entity city = _citySystem.City;
+            if (city != Entity.Null && EntityManager.HasComponent<Population>(city))
+            {
+                Population population = EntityManager.GetComponentData<Population>(city);
+                Command.SendToAll?.Invoke(new PopulationCommand
+                {
+                    Population = population.m_Population,
+                    PopulationWithMoveIn = population.m_PopulationWithMoveIn,
+                    AverageHappiness = population.m_AverageHappiness,
+                    AverageHealth = population.m_AverageHealth
+                });
+            }
         }
 
         // ---------- level-ups and abandonment (host) ----------

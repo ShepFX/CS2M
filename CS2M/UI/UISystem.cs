@@ -34,6 +34,7 @@ namespace CS2M.UI
         private ValueBinding<string> _playerStatus;
 
         private ValueBinding<string> _username;
+        private ValueBinding<bool> _hudCollapsed;
 
         private readonly Stopwatch _downloadTimer = new();
         private int _lastDownloadDone = 0;
@@ -80,6 +81,17 @@ namespace CS2M.UI
             AddBinding(_joinPort = new ValueBinding<int>(Mod.Name, "JoinPort", settings?.LastJoinPort ?? 0));
             AddBinding(_hostPort = new ValueBinding<int>(Mod.Name, "HostPort", settings?.LastHostPort ?? 0));
             AddBinding(_username = new ValueBinding<string>(Mod.Name, "Username", settings?.LastUsername ?? ""));
+            // multiplayer HUD hidden/shown, remembered between games
+            AddBinding(_hudCollapsed = new ValueBinding<bool>(Mod.Name, "HudCollapsed", settings?.HudCollapsed ?? false));
+            AddBinding(new TriggerBinding<bool>(Mod.Name, "SetHudCollapsed", collapsed =>
+            {
+                _hudCollapsed.Update(collapsed);
+                if (Mod.Instance?.Settings != null)
+                {
+                    Mod.Instance.Settings.HudCollapsed = collapsed;
+                    Mod.Instance.Settings.ApplyAndSave();
+                }
+            }));
 
             AddBinding(_playerStatus = new ValueBinding<string>(Mod.Name, "PlayerStatus", "INACTIVE"));
             AddBinding(_downloadDone = new ValueBinding<int>(Mod.Name, "DownloadDone", 0));
