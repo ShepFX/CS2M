@@ -33,6 +33,7 @@ namespace CS2M.BaseGame.Systems
                 CreationFlags = (uint)c.m_Flags,
                 RandomSeed = c.m_RandomSeed,
                 Original = NetRefs.Describe(em, c.m_Original, prefabs),
+                HadOriginal = c.m_Original != Entity.Null,
                 Owner = NetRefs.Describe(em, c.m_Owner, prefabs)
             };
             if (c.m_Attached != Entity.Null)
@@ -246,7 +247,8 @@ namespace CS2M.BaseGame.Systems
             }
 
             DefinitionData main = definitions.Find(d => d.Object != null && !d.HasOwnerDefinition) ?? definitions[0];
-            string key = main.Prefab + string.Join(",", main.Object?.Position ?? new float[0]) + definitions.Count;
+            // every prefab and position is in the key: upgrades placed one after another share the same main (owner) definition
+            string key = string.Join("|", definitions.ConvertAll(d => d.Prefab + string.Join(",", d.Object?.Position ?? new float[0])));
             float now = UnityEngine.Time.realtimeSinceStartup;
             if (key == _lastKey && now - _lastTime < 0.5f)
             {
@@ -284,10 +286,15 @@ namespace CS2M.BaseGame.Systems
             while (Pending.TryDequeue(out PlaceCommand command))
             {
                 var buffer = new EntityCommandBuffer(Allocator.Temp);
+                DefinitionData[] definitions = command.Definitions ?? new DefinitionData[0];
+
+                // a permanent definition with an original would build a copy and hide the original, so
+                // moves, upgrades and removals of existing things are applied to them directly
+                int changed = ExistingParts.Apply(EntityManager, _prefabSystem, buffer, definitions);
                 int built = 0;
-                foreach (DefinitionData data in command.Definitions ?? new DefinitionData[0])
+                foreach (DefinitionData data in definitions)
                 {
-                    if (Definitions.Create(EntityManager, _prefabSystem, buffer, data))
+                    if (!data.HadOriginal && Definitions.Create(EntityManager, _prefabSystem, buffer, data))
                     {
                         built++;
                     }
@@ -295,7 +302,7 @@ namespace CS2M.BaseGame.Systems
 
                 buffer.Playback(EntityManager);
                 buffer.Dispose();
-                BaseGameLog.Info($"Placement received: {built} of {command.Definitions?.Length ?? 0} definition(s) built");
+                BaseGameLog.Info($"Placement received: {built} built, {changed} existing changed, of {definitions.Length} definition(s)");
             }
         }
     }

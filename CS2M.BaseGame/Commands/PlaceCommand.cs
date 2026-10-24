@@ -14,6 +14,13 @@ namespace CS2M.BaseGame.Commands
         public uint CreationFlags { get; set; }
         public int RandomSeed { get; set; }
         public NetRef Original { get; set; }
+
+        /// <summary>
+        ///     The definition changes or removes something that already exists (CreationDefinition.m_Original was set),
+        ///     even when Original can't describe it (areas). Such definitions are applied by ExistingParts, never built.
+        /// </summary>
+        public bool HadOriginal { get; set; }
+
         public NetRef Owner { get; set; }
 
         /// <summary>
