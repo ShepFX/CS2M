@@ -23,10 +23,10 @@ import {
     ipAddress,
     joinGame,
     JoinGameSettings,
-    PasswordField,
     JoinMessages,
     JoinStatus,
     LocalCompatibility,
+    PasswordField,
     playerStatus,
     port,
     username
@@ -131,6 +131,11 @@ const ModRow = ({check}: { check: ModCheck }) => {
             <span className={styles.modState}>{state}</span>
         </div>
     );
+}
+
+// "1.6.2f1 (768.21d1) [6300.27778]" -> "1.6.2f1": the full string doesn't fit the column
+function shortVersion(version?: string | null): string {
+    return (version ?? "?").split(" ")[0];
 }
 
 const VersionBadge = ({session, check}: { session: LobbySession, check: SessionCheck }) => {
@@ -259,7 +264,7 @@ const JoinArea = ({label, reason, onJoin, extra}: {
 }
 
 // Returned as a plain string: in these flex columns every separate text node lands on its own line
-function lastJoined(translate: (id: string) => string | null, time: number): string {
+function lastJoined(translate: Translate, time: number): string {
     const minutes = Math.max(0, Math.floor((Date.now() / 1000 - time) / 60));
     if (minutes < 60) {
         return format(translate("CS2M.UI.Browser.MinutesAgo"), {N: minutes});
@@ -554,10 +559,4 @@ export const MultiplayerScreen = () => {
             </div>
         </div>
     );
-}
-
-
-// "1.6.2f1 (768.21d1) [6300.27778]" -> "1.6.2f1": the full string doesn't fit the column
-function shortVersion(version?: string | null): string {
-    return (version ?? "?").split(" ")[0];
 }

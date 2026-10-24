@@ -1,4 +1,4 @@
-// Join screen (approved mockup). Flexbox and margins only: no CSS grid, gap or backdrop-filter in cohtml.
+// Join screen. Flexbox and margins only: no CSS grid, gap or backdrop-filter in cohtml.
 $panel: rgba(22, 27, 35, 0.86);
 $panel2: rgba(30, 37, 47, 0.92);
 $line: rgba(255, 255, 255, 0.07);
@@ -494,6 +494,13 @@ $host: #d6ff3f;
     color: $fg;
 }
 
+// A status line that mixes a localized string and plain text on one row
+.statusLine {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
 .reason {
     font-size: 12rem;
     color: $warn;
@@ -557,12 +564,4 @@ $host: #d6ff3f;
 
 .markBad {
     background-color: $bad;
-}
-
-
-// a status line that mixes a localized string and plain text on one row
-.statusLine {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
 }

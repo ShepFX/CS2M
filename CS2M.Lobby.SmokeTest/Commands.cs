@@ -1,5 +1,5 @@
 // Copies of CS2M/Commands/ApiServer: the property names are what matters on the wire.
-// TokenSecret is the optional host secret (see CS2M.Lobby/Protocol.cs); the mod doesn't send it yet.
+// TokenSecret is the optional host secret (see CS2M.Lobby/Protocol.cs).
 namespace CS2M.Commands.ApiServer
 {
     public abstract class ApiCommandBase
@@ -71,7 +71,7 @@ namespace CS2M.Commands.ApiServer
     }
 }
 
-// The commands exactly as the current mod has them (no TokenSecret), registered in the same order in a second
+// The commands as older mod versions have them (no TokenSecret), registered in the same order in a second
 // model, so the smoke test also speaks the older wire format
 namespace CS2M.Commands.ApiServer.Legacy
 {

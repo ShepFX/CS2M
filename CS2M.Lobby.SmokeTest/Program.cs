@@ -2,7 +2,7 @@
 // Exits 0 when every check passes.
 //
 // --remote: only the basics against a deployed lobby (register with a secret, listed over HTTP, NAT
-// introduction and connect, close), e.g. dotnet run -- relay.shep.rip 4242 https://cs2.shep.rip --remote
+// introduction and connect, close), e.g. dotnet run -- <lobby host> 4242 https://<lobby HTTP host> --remote
 //
 // The full run expects a freshly started lobby (it uses up this source's hourly quota of distinct introductions).
 // Run it inside the lobby container's network namespace (docker run --network container:<lobby>), against
@@ -35,7 +35,7 @@ var http = new HttpClient
 };
 int failures = 0;
 
-// The mod's model: ApiCommand.RefreshModel, ProtocolOrder. The legacy one is today's mod, without TokenSecret.
+// The mod's model: ApiCommand.RefreshModel, ProtocolOrder. The legacy one is older mods, without TokenSecret.
 MessagePackSerializerOptions Model(params Type[] types)
 {
     var builder = MessagePackSerializerOptions.Standard.WithResolver(StandardResolver.Instance).Configure();
@@ -150,7 +150,7 @@ SessionInfoCommand Info(string city, string withSecret) => new()
 };
 
 // Like ApiServer.Start: the first keep-alive, then the port check request straight away
-Send(host, Serialize(Info("Smoke‮ville​", secret)));
+Send(host, Serialize(Info("Smoke\u202Eville\u200B", secret)));
 Pump(200, host);
 Send(host, Serialize(new PortCheckRequestCommand { Port = host.LocalPort }));
 string raw = await http.GetStringAsync("sessions");
@@ -189,7 +189,7 @@ Check(listed.ValueKind == JsonValueKind.Object && listed.GetProperty("name").Get
 var details = new SessionDetailsCommand
 {
     Token = token, Population = 12480, Milestone = 7, Year = 2026, Month = 5,
-    PlayerNames = new[] { "tester", "Sh‮ep" }, PlayerColors = new[] { "#D6FF3F", "not a colour" },
+    PlayerNames = new[] { "tester", "Play\u202Eer" }, PlayerColors = new[] { "#D6FF3F", "not a colour" },
     ModIds = new[] { "12345", "local:SomeMod", "67890" }, ModNames = new[] { "Some Asset Pack", "", "I18N Everywhere" },
     ModVersions = new[] { "1.0", "0.2.0.0", "2.1" }, ModClientSide = new[] { false, false, true }, ModCount = 4
 };
@@ -198,7 +198,6 @@ Console.WriteLine($"  SessionDetailsCommand: {detailsBytes.Length} bytes");
 Send(host, detailsBytes);
 Send(host, Serialize(new SessionDetailsCommand { Token = "NOSUCHSESSION", Population = 1 }));
 Pump(300, host);
-raw = await (await http.GetAsync("sessions")).Content.ReadAsStringAsync();
 await Task.Delay(2100);
 raw = await http.GetStringAsync("sessions");
 listed = Find(JsonDocument.Parse(raw).RootElement, token);
@@ -209,7 +208,7 @@ Check(d.ValueKind == JsonValueKind.Object && d.GetProperty("population").GetInt3
     "SessionDetailsCommand listed with population, milestone, date");
 Check(d.ValueKind == JsonValueKind.Object && d.GetProperty("playerList").GetArrayLength() == 2 &&
       d.GetProperty("playerList")[0].GetProperty("color").GetString() == "#D6FF3F" &&
-      d.GetProperty("playerList")[1].GetProperty("name").GetString() == "Shep" &&
+      d.GetProperty("playerList")[1].GetProperty("name").GetString() == "Player" &&
       d.GetProperty("playerList")[1].GetProperty("color").ValueKind == JsonValueKind.Null,
     "player list with colours, bad colour and bidi override dropped");
 Check(d.ValueKind == JsonValueKind.Object && d.GetProperty("mods").GetArrayLength() == 3 &&
@@ -370,7 +369,7 @@ Check(Ask(otherRouter, lobbyOther, tokenRequest) != null, "the same session agai
 Check(Ask(otherRouter, lobbyOther, CaptureRequest($"ip:{self}:{host.LocalPort}")) == null,
     "a 6th distinct session in the hour is refused");
 
-// Today's mod (no secret): works, and another port on its address can't change or close it
+// An older mod (no secret): works, and another port on its address can't change or close it
 var legacyHost = new NetManager(new EventBasedNetListener()) { UnconnectedMessagesEnabled = true };
 legacyHost.Start(0);
 Legacy.SessionInfoCommand LegacyInfo(string city) => new()

@@ -51,11 +51,6 @@ public static class Net
         return Hash(Convert.ToHexString(bytes, 0, Math.Min(6, bytes.Length))) | 1UL << 63;
     }
 
-    public static bool SameSubnet(IPAddress a, IPAddress b)
-    {
-        return SubnetKey(a) == SubnetKey(b);
-    }
-
     /// <summary>Seeded FNV-1a, for counting distinct strings without storing them.</summary>
     public static ulong Hash(string value)
     {
