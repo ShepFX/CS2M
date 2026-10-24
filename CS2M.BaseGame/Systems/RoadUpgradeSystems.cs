@@ -271,11 +271,15 @@ namespace CS2M.BaseGame.Systems
         public static readonly ConcurrentQueue<RoadUpgradeCommand> Pending = new ConcurrentQueue<RoadUpgradeCommand>();
 
         private const float RetrySeconds = 5f;
+
+        // each lookup scans every road, so segments still missing are retried a few times a second, not every frame
+        private const float RetryInterval = 0.25f;
         private const RoadFlags AlignmentFlags = RoadFlags.StartHalfAligned | RoadFlags.EndHalfAligned;
 
         private PrefabSystem _prefabSystem;
         private readonly List<KeyValuePair<float, EdgeUpgradeData>> _waitingEdges = new List<KeyValuePair<float, EdgeUpgradeData>>();
         private readonly List<KeyValuePair<float, NodeUpgradeData>> _waitingNodes = new List<KeyValuePair<float, NodeUpgradeData>>();
+        private float _nextRetry;
 
         protected override void OnCreate()
         {
@@ -291,8 +295,10 @@ namespace CS2M.BaseGame.Systems
             }
 
             float now = UnityEngine.Time.realtimeSinceStartup;
+            bool received = false;
             while (Pending.TryDequeue(out RoadUpgradeCommand command))
             {
+                received = true;
                 foreach (EdgeUpgradeData data in command.Edges ?? new EdgeUpgradeData[0])
                 {
                     _waitingEdges.Add(new KeyValuePair<float, EdgeUpgradeData>(now, data));
@@ -304,13 +310,15 @@ namespace CS2M.BaseGame.Systems
                 }
             }
 
-            if (_waitingEdges.Count == 0 && _waitingNodes.Count == 0)
+            if ((_waitingEdges.Count == 0 && _waitingNodes.Count == 0) || (!received && now < _nextRetry))
             {
                 return;
             }
 
+            _nextRetry = now + RetryInterval;
+            // oldest first, so two quick changes to one segment end in the latest state
             int edges = 0, nodes = 0;
-            for (int i = _waitingEdges.Count - 1; i >= 0; i--)
+            for (int i = 0; i < _waitingEdges.Count; i++)
             {
                 EdgeUpgradeData data = _waitingEdges[i].Value;
                 if (NetRefs.Resolve(EntityManager, data.Edge, out Entity edge) && edge != Entity.Null)
@@ -320,16 +328,16 @@ namespace CS2M.BaseGame.Systems
                         edges++;
                     }
 
-                    _waitingEdges.RemoveAt(i);
+                    _waitingEdges.RemoveAt(i--);
                 }
                 else if (now - _waitingEdges[i].Key > RetrySeconds)
                 {
                     BaseGameLog.Warn($"Road upgrade received for a segment missing here at {NetRefs.V3(data.Edge?.A)}");
-                    _waitingEdges.RemoveAt(i);
+                    _waitingEdges.RemoveAt(i--);
                 }
             }
 
-            for (int i = _waitingNodes.Count - 1; i >= 0; i--)
+            for (int i = 0; i < _waitingNodes.Count; i++)
             {
                 NodeUpgradeData data = _waitingNodes[i].Value;
                 if (NetRefs.Resolve(EntityManager, data.Node, out Entity node) && node != Entity.Null)
@@ -339,12 +347,12 @@ namespace CS2M.BaseGame.Systems
                         nodes++;
                     }
 
-                    _waitingNodes.RemoveAt(i);
+                    _waitingNodes.RemoveAt(i--);
                 }
                 else if (now - _waitingNodes[i].Key > RetrySeconds)
                 {
                     BaseGameLog.Warn($"Road upgrade received for a junction missing here at {NetRefs.V3(data.Node?.A)}");
-                    _waitingNodes.RemoveAt(i);
+                    _waitingNodes.RemoveAt(i--);
                 }
             }
 
@@ -357,9 +365,15 @@ namespace CS2M.BaseGame.Systems
         private bool ApplyEdge(Entity entity, EdgeUpgradeData data)
         {
             Entity prefab = PrefabLookup.Find(EntityManager, _prefabSystem, data.Prefab);
-            if (prefab == Entity.Null || data.Curve == null || data.Curve.Length < 12)
+            if (prefab == Entity.Null)
             {
                 BaseGameLog.Warn($"Road upgrade received with an unknown prefab {data.Prefab}");
+                return false;
+            }
+
+            if (data.Curve == null || data.Curve.Length < 12 || data.StartNode == null)
+            {
+                BaseGameLog.Warn($"Road upgrade received without a curve for {data.Prefab}");
                 return false;
             }
 
