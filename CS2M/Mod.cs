@@ -76,6 +76,7 @@ namespace CS2M
             var harmony = new Harmony(HarmonyPatchID);
             harmony.PatchAll(Assembly.GetExecutingAssembly());
             CS2M.Patches.ServiceUpkeepPatch.Apply(harmony);
+            CS2M.Patches.MenuPausePatch.Apply(harmony);
 
             // Set up systems
             updateSystem.UpdateBefore<NetworkingSystem>(SystemUpdatePhase.PreSimulation);

@@ -56,7 +56,7 @@ namespace CS2M.BaseGame.Systems
         // the only activities a cursor can show (see Activity()); anything else is shown as nothing
         private static readonly HashSet<string> Activities = new HashSet<string>
         {
-            "", "zoning", "roads", "bulldozing", "placing", "areas", "transit lines", "terrain", "upgrading"
+            "", "zoning", "roads", "bulldozing", "placing", "areas", "transit lines", "terrain", "upgrading", "in menu", "away"
         };
 
         // names a remote player may not show up as: the mod's own messages use it
@@ -149,6 +149,16 @@ namespace CS2M.BaseGame.Systems
 
         private string Activity()
         {
+            if (Presence.Away)
+            {
+                return "away";
+            }
+
+            if (Presence.InMenu)
+            {
+                return "in menu";
+            }
+
             string tool = _toolSystem.activeTool?.toolID ?? "";
             switch (tool)
             {
