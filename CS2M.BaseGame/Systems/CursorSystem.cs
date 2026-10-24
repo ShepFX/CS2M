@@ -20,7 +20,10 @@ namespace CS2M.BaseGame.Systems
     {
         public class RemoteCursor
         {
+            // what's shown: BaseName, plus the player id when another player uses the same name
             public string Name;
+            // the cleaned name the player sent
+            public string BaseName;
             // Position is what's drawn; it glides towards Target, the last position received
             public float3 Position;
             public float3 Target;
@@ -40,6 +43,24 @@ namespace CS2M.BaseGame.Systems
         ///     A cursor that hasn't been heard from in this many seconds is dropped (player left).
         /// </summary>
         public const float Timeout = 6f;
+
+        /// <summary>
+        ///     Goes up whenever a cursor joins or leaves or a name or activity changes, so the UI only rebuilds
+        ///     the player list when something it shows changed.
+        /// </summary>
+        public static int Version { get; private set; }
+
+        private const int MaxNameLength = 32;
+        private const int MaxRemoteCursors = 64;
+
+        // the only activities a cursor can show (see Activity()); anything else is shown as nothing
+        private static readonly HashSet<string> Activities = new HashSet<string>
+        {
+            "", "zoning", "roads", "bulldozing", "placing", "areas", "transit lines", "terrain", "upgrading"
+        };
+
+        // names a remote player may not show up as: the mod's own messages use it
+        private const string ReservedName = "CS2M";
 
         private const float SendInterval = 0.05f;
         private const float Heartbeat = 2f;
@@ -72,7 +93,12 @@ namespace CS2M.BaseGame.Systems
         {
             if (Command.CurrentRole == MultiplayerRole.None)
             {
-                Remote.Clear();
+                if (Remote.Count > 0)
+                {
+                    Remote.Clear();
+                    Version++;
+                }
+
                 return;
             }
 
@@ -142,19 +168,39 @@ namespace CS2M.BaseGame.Systems
         {
             // still joining: the list is cleared every frame until we're playing, so each update would
             // look like a new player (and print "joined")
-            if (Command.CurrentRole == MultiplayerRole.None)
+            if (command == null || Command.CurrentRole == MultiplayerRole.None)
             {
+                return;
+            }
+
+            if (!Inbound.InMap(command.X, command.Y, command.Z))
+            {
+                Inbound.Warn("cursor-position", $"Cursor from player {command.SenderId} is off the map; ignored");
                 return;
             }
 
             bool joined = !Remote.TryGetValue(command.SenderId, out RemoteCursor cursor);
             if (joined)
             {
+                if (Remote.Count >= MaxRemoteCursors)
+                {
+                    Inbound.Warn("cursor-count", "Too many player cursors; a new one was ignored");
+                    return;
+                }
+
                 cursor = new RemoteCursor { Color = Palette[(Remote.Count + 1) % Palette.Length] };
                 Remote[command.SenderId] = cursor;
             }
 
-            cursor.Name = string.IsNullOrEmpty(command.Username) ? $"Player {command.SenderId}" : command.Username;
+            string baseName = SafeName(command.Username, command.SenderId);
+            string activity = command.Activity != null && Activities.Contains(command.Activity) ? command.Activity : "";
+            if (joined || baseName != cursor.BaseName || activity != cursor.Activity)
+            {
+                cursor.BaseName = baseName;
+                cursor.Activity = activity;
+                RefreshNames();
+            }
+
             cursor.Target = new float3(command.X, command.Y, command.Z);
             if (!cursor.Placed || !cursor.OnMap)
             {
@@ -162,13 +208,51 @@ namespace CS2M.BaseGame.Systems
                 cursor.Position = cursor.Target;
                 cursor.Placed = true;
             }
-            cursor.Activity = command.Activity ?? "";
             cursor.OnMap = command.OnMap;
             cursor.LastSeen = UnityEngine.Time.realtimeSinceStartup;
             if (joined)
             {
                 CS2M.API.Chat.Instance?.PrintGameMessage($"{cursor.Name} joined");
             }
+        }
+
+        /// <summary>
+        ///     The name to show for a remote player: control and format characters removed, at most 32
+        ///     characters, and never "CS2M" or the local player's own name (it would look like a message from
+        ///     the mod or from us).
+        /// </summary>
+        private static string SafeName(string username, int senderId)
+        {
+            string name = Inbound.CleanName(username, MaxNameLength);
+            string local = Inbound.CleanName(Command.GetLocalUsername?.Invoke(), MaxNameLength);
+            if (name.Length == 0 ||
+                string.Equals(name, ReservedName, System.StringComparison.OrdinalIgnoreCase) ||
+                (local.Length > 0 && string.Equals(name, local, System.StringComparison.OrdinalIgnoreCase)))
+            {
+                return $"Player {senderId}";
+            }
+
+            return name;
+        }
+
+        // Two players with the same name both show it with their id, except the host (id 0), so nobody can
+        // pass for the host or for another player.
+        private static void RefreshNames()
+        {
+            var counts = new Dictionary<string, int>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (RemoteCursor cursor in Remote.Values)
+            {
+                counts.TryGetValue(cursor.BaseName ?? "", out int count);
+                counts[cursor.BaseName ?? ""] = count + 1;
+            }
+
+            foreach (KeyValuePair<int, RemoteCursor> pair in Remote)
+            {
+                string baseName = pair.Value.BaseName ?? "";
+                pair.Value.Name = pair.Key != 0 && counts[baseName] > 1 ? $"{baseName} (#{pair.Key})" : baseName;
+            }
+
+            Version++;
         }
 
         private static void Smooth()
@@ -184,13 +268,18 @@ namespace CS2M.BaseGame.Systems
         private static void DropStale()
         {
             float now = UnityEngine.Time.realtimeSinceStartup;
-            var stale = new List<int>();
+            List<int> stale = null;
             foreach (KeyValuePair<int, RemoteCursor> pair in Remote)
             {
                 if (now - pair.Value.LastSeen > Timeout)
                 {
-                    stale.Add(pair.Key);
+                    (stale ??= new List<int>()).Add(pair.Key);
                 }
+            }
+
+            if (stale == null)
+            {
+                return;
             }
 
             foreach (int id in stale)
@@ -198,6 +287,8 @@ namespace CS2M.BaseGame.Systems
                 CS2M.API.Chat.Instance?.PrintGameMessage($"{Remote[id].Name} left");
                 Remote.Remove(id);
             }
+
+            RefreshNames();
         }
     }
 }
