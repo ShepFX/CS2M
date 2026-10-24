@@ -1,0 +1,49 @@
+# CS2M lobby: Cities Skylines II co-op server browser (HTTP, behind nginx as cs2.shep.rip)
+# and NAT introduction (UDP 4242, relay.shep.rip DNS-only). Source: ShepFX/CS2M CS2M.Lobby.
+# Hardened version, see deploy/cs2-lobby/APPLY.md in the repo.
+services:
+  cs2m-lobby:
+    image: cs2m-lobby:local
+    container_name: cs2m-lobby
+    restart: unless-stopped
+    ports:
+      # IPv4 only. Without the address Docker also listens on [::]:4242 through docker-proxy, and every IPv6
+      # sender then reaches the lobby as the cs2-net gateway (172.24.0.1): one shared rate-limit bucket, and port
+      # checks aimed at the host itself. The lobby has no IPv6 (no AAAA for relay.shep.rip, mod is IPv4 only).
+      - "0.0.0.0:4242:4242/udp"
+    environment:
+      LOBBY_UDP_PORT: "4242"
+      LOBBY_HTTP_PORT: "8080"
+    networks:
+      - cs2-net
+    # The app writes nothing to disk; the .NET runtime only needs /tmp for its diagnostics socket
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    # Ports above 1024, runs as the image's non-root "app" user: no capabilities needed at all
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+    pids_limit: 128
+    cpus: 1.0
+    mem_limit: 256m
+    memswap_limit: 256m
+    # autoheal on the VPS runs with AUTOHEAL_CONTAINER_LABEL=autoheal: it only restarts containers labelled so.
+    # /health turns 503 when the UDP loop or socket stops (the lobby sends itself a test packet every 10 s), so
+    # this covers both sides. A restart only drops the list; hosts re-register within 10 s.
+    labels:
+      autoheal: "true"
+    healthcheck:
+      test: ["CMD", "dotnet", "CS2M.Lobby.dll", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+networks:
+  cs2-net:
+    name: cs2-net

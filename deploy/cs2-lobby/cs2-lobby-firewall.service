@@ -1,0 +1,16 @@
+# Install as /etc/systemd/system/cs2-lobby-firewall.service
+[Unit]
+Description=CS2M lobby UDP rate limits (nftables table ip cs2lobby)
+Documentation=file:///usr/local/sbin/cs2-lobby-firewall
+# After the saved iptables rules are restored; its own table, so the order only keeps the boot log tidy
+After=netfilter-persistent.service
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/cs2-lobby-firewall
+ExecStop=/usr/local/sbin/cs2-lobby-firewall --remove
+
+[Install]
+WantedBy=multi-user.target

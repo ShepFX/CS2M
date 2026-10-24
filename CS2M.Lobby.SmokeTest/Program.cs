@@ -1,6 +1,10 @@
-// Usage: dotnet run -- <lobby host> [udp port] [http port]
+// Usage: dotnet run -- <lobby host> [udp port] [http port or base URL] [--remote]
 // Exits 0 when every check passes.
 //
+// --remote: only the basics against a deployed lobby (register with a secret, listed over HTTP, NAT
+// introduction and connect, close), e.g. dotnet run -- relay.shep.rip 4242 https://cs2.shep.rip --remote
+//
+// The full run expects a freshly started lobby (it uses up this source's hourly quota of distinct introductions).
 // Run it inside the lobby container's network namespace (docker run --network container:<lobby>), against
 // 127.0.0.1, with LOBBY_ALLOW_PRIVATE_PEERS=1 on the lobby: hosts then register from 127.0.0.1, and a second
 // source is the container's own address, which the lobby sees as a different public address
@@ -18,12 +22,17 @@ using MessagePack.Attributeless;
 using MessagePack.Resolvers;
 using Legacy = CS2M.Commands.ApiServer.Legacy;
 
-string lobbyHost = args.Length > 0 ? args[0] : "127.0.0.1";
-int udpPort = args.Length > 1 ? int.Parse(args[1]) : 4242;
-int httpPort = args.Length > 2 ? int.Parse(args[2]) : 8080;
+bool remote = args.Contains("--remote");
+string[] positional = args.Where(a => !a.StartsWith("--")).ToArray();
+string lobbyHost = positional.Length > 0 ? positional[0] : "127.0.0.1";
+int udpPort = positional.Length > 1 ? int.Parse(positional[1]) : 4242;
+string httpBase = positional.Length > 2 ? positional[2] : "8080";
 IPAddress lobbyAddress = Dns.GetHostAddresses(lobbyHost).First(a => a.AddressFamily == AddressFamily.InterNetwork);
 var lobby = new IPEndPoint(lobbyAddress, udpPort);
-var http = new HttpClient { BaseAddress = new Uri($"http://{lobbyHost}:{httpPort}/") };
+var http = new HttpClient
+{
+    BaseAddress = new Uri(httpBase.StartsWith("http") ? httpBase.TrimEnd('/') + "/" : $"http://{lobbyHost}:{httpBase}/")
+};
 int failures = 0;
 
 // The mod's model: ApiCommand.RefreshModel, ProtocolOrder. The legacy one is today's mod, without TokenSecret.
@@ -102,6 +111,11 @@ JsonElement Find(JsonElement list, string token) =>
 string NewSecret() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
     .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
+if (remote)
+{
+    return await RemoteChecks();
+}
+
 // Host: like NetworkManager.StartServer
 var hostListener = new EventBasedNetListener();
 PortCheckResultCommand portResult = null;
@@ -124,7 +138,9 @@ attacker.Start(0);
 
 Check((await http.GetAsync("health")).IsSuccessStatusCode, "GET /health");
 
-const string token = "SMOKE12345";
+// Fresh tokens per run: a closed token stays reserved for its owner (and its secret) for hours
+string run = Convert.ToHexString(RandomNumberGenerator.GetBytes(3));
+string token = "SMOKE" + run;
 string secret = NewSecret();
 SessionInfoCommand Info(string city, string withSecret) => new()
 {
@@ -424,16 +440,16 @@ Pump(300, host);
 // Five sessions per address
 for (int i = 0; i < 6; i++)
 {
-    Send(host, Serialize(new SessionInfoCommand { Token = $"CAP{i:000000}", TokenSecret = secret, CityName = "Cap" }));
+    Send(host, Serialize(new SessionInfoCommand { Token = $"CAP{run}{i}", TokenSecret = secret, CityName = "Cap" }));
 }
 
 Pump(300, host);
 JsonElement all = await FreshSessions();
-int capped = all.EnumerateArray().Count(s => s.GetProperty("token").GetString()!.StartsWith("CAP"));
+int capped = all.EnumerateArray().Count(s => s.GetProperty("token").GetString()!.StartsWith("CAP" + run));
 Check(capped == 5, $"five sessions per address ({capped} listed)");
 for (int i = 0; i < 6; i++)
 {
-    Send(host, Serialize(new ServerUnregisterCommand { Token = $"CAP{i:000000}", TokenSecret = secret }));
+    Send(host, Serialize(new ServerUnregisterCommand { Token = $"CAP{run}{i}", TokenSecret = secret }));
 }
 
 // A burst of junk from one source: the lobby keeps working for everyone else
@@ -462,3 +478,51 @@ joiner.Stop();
 joiner2.Stop();
 Console.WriteLine(failures == 0 ? "ALL PASSED" : $"{failures} FAILED");
 return failures == 0 ? 0 : 1;
+
+async Task<int> RemoteChecks()
+{
+    Check((await http.GetAsync("health")).IsSuccessStatusCode, "GET /health");
+    string remoteToken = "SMOKE" + Convert.ToHexString(RandomNumberGenerator.GetBytes(4));
+    string remoteSecret = NewSecret();
+    var hostListener = new EventBasedNetListener();
+    bool sawPeer = false;
+    hostListener.ConnectionRequestEvent += r => r.AcceptIfKey("CSM");
+    hostListener.PeerConnectedEvent += _ => sawPeer = true;
+    var remoteHost = new NetManager(hostListener) { NatPunchEnabled = true, UnconnectedMessagesEnabled = true };
+    remoteHost.Start(0);
+    remoteHost.NatPunchModule.Init(new EventBasedNatPunchListener());
+    remoteHost.SendUnconnectedMessage(Serialize(new SessionInfoCommand
+    {
+        Token = remoteToken, TokenSecret = remoteSecret, LocalIp = NetUtils.GetLocalIp(LocalAddrType.IPv4),
+        LocalPort = remoteHost.LocalPort, CityName = "Smoke test", HostName = "smoke", PlayerCount = 1
+    }), lobby);
+    Pump(500, remoteHost);
+    Check(Find(await FreshSessions(), remoteToken).ValueKind == JsonValueKind.Object, $"{remoteToken} registered and listed");
+
+    var joinListener = new EventBasedNetListener();
+    bool connected = false;
+    joinListener.PeerConnectedEvent += _ => connected = true;
+    var remoteJoiner = new NetManager(joinListener) { NatPunchEnabled = true };
+    remoteJoiner.Start();
+    var punchListener = new EventBasedNatPunchListener();
+    IPEndPoint target = null;
+    punchListener.NatIntroductionSuccess += (point, _, _) => target ??= point;
+    remoteJoiner.NatPunchModule.Init(punchListener);
+    remoteJoiner.NatPunchModule.SendNatIntroduceRequest(lobby, "token:" + remoteToken);
+    for (int i = 0; i < 50 && target == null; i++) Pump(100, remoteHost, remoteJoiner);
+    Check(target != null, "NAT introduction by token");
+    if (target != null)
+    {
+        remoteJoiner.Connect(target, "CSM");
+        for (int i = 0; i < 50 && !connected; i++) Pump(100, remoteHost, remoteJoiner);
+        Check(connected && sawPeer, "joiner connected to the host");
+    }
+
+    remoteHost.SendUnconnectedMessage(Serialize(new ServerUnregisterCommand { Token = remoteToken, TokenSecret = remoteSecret }), lobby);
+    Pump(500, remoteHost);
+    Check(Find(await FreshSessions(), remoteToken).ValueKind != JsonValueKind.Object, "closed with the secret");
+    remoteHost.Stop();
+    remoteJoiner.Stop();
+    Console.WriteLine(failures == 0 ? "ALL PASSED" : $"{failures} FAILED");
+    return failures == 0 ? 0 : 1;
+}
