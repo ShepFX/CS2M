@@ -13,7 +13,8 @@ namespace CS2M.BaseGame.Systems
 {
     /// <summary>
     ///     Budget panel figures come from each game's own simulation, and joiners don't run building upkeep,
-    ///     so the host sends its figures every 2 s and joiners write them in just before the UI reads them.
+    ///     so the host sends its figures every 2 s and joiners write them in just before the UI reads them:
+    ///     income and expenses, collected service fees, and per-service upkeep.
     ///     Per-service upkeep is answered from <see cref="TryGetHostUpkeep"/> by a patch in the main mod.
     /// </summary>
     public partial class BudgetFiguresSystem : GameSystemBase
@@ -31,7 +32,11 @@ namespace CS2M.BaseGame.Systems
         private static readonly Dictionary<string, int> HostUpkeep = new Dictionary<string, int>();
         private static PrefabSystem _prefabs;
 
+        private static readonly FieldInfo FeesField =
+            typeof(ServiceFeeSystem).GetField("m_CityServiceFees", BindingFlags.Instance | BindingFlags.NonPublic);
+
         private CityServiceBudgetSystem _budgetSystem;
+        private ServiceFeeSystem _feeSystem;
         private EntityQuery _budgetQuery;
         private float _lastSend;
 
@@ -39,6 +44,7 @@ namespace CS2M.BaseGame.Systems
         {
             base.OnCreate();
             _budgetSystem = World.GetOrCreateSystemManaged<CityServiceBudgetSystem>();
+            _feeSystem = World.GetOrCreateSystemManaged<ServiceFeeSystem>();
             _prefabs = World.GetOrCreateSystemManaged<PrefabSystem>();
             _budgetQuery = GetEntityQuery(ComponentType.ReadOnly<ServiceBudgetData>());
         }
@@ -99,6 +105,7 @@ namespace CS2M.BaseGame.Systems
                 {
                     Copy(Latest.Income, income);
                     Copy(Latest.Expenses, expenses);
+                    CopyFees(Latest);
                 }
 
                 return;
@@ -139,13 +146,53 @@ namespace CS2M.BaseGame.Systems
                 }
             }
 
+            var feeResources = new List<int>();
+            var feeValues = new List<float>();
+            if (FeesField?.GetValue(_feeSystem) is NativeList<CollectedCityServiceFeeData> fees && fees.IsCreated)
+            {
+                foreach (CollectedCityServiceFeeData fee in fees)
+                {
+                    feeResources.Add(fee.m_PlayerResource);
+                    feeValues.AddRange(new[]
+                    {
+                        fee.m_Export, fee.m_Import, fee.m_Internal, fee.m_ExportCount, fee.m_ImportCount, fee.m_InternalCount
+                    });
+                }
+            }
+
             Command.SendToAll?.Invoke(new BudgetFiguresCommand
             {
                 Income = income.ToArray(),
                 Expenses = expenses.ToArray(),
                 Services = services.ToArray(),
-                Upkeep = upkeep.ToArray()
+                Upkeep = upkeep.ToArray(),
+                FeeResources = feeResources.ToArray(),
+                FeeValues = feeValues.ToArray()
             });
+        }
+
+        // The fee list is rebuilt from the joiner's own fee collectors whenever ServiceFeeSystem updates; the host's
+        // replaces it until then, so the fee lines of the service rows match
+        private void CopyFees(BudgetFiguresCommand command)
+        {
+            if (command.FeeResources == null || command.FeeValues == null ||
+                !(FeesField?.GetValue(_feeSystem) is NativeList<CollectedCityServiceFeeData> fees) || !fees.IsCreated)
+            {
+                return;
+            }
+
+            fees.Clear();
+            for (int i = 0; i < command.FeeResources.Length; i++)
+            {
+                float[] v = command.FeeValues;
+                var fee = new CollectedCityServiceFeeData
+                {
+                    m_PlayerResource = command.FeeResources[i],
+                    m_Export = v[i * 6], m_Import = v[i * 6 + 1], m_Internal = v[i * 6 + 2],
+                    m_ExportCount = v[i * 6 + 3], m_ImportCount = v[i * 6 + 4], m_InternalCount = v[i * 6 + 5]
+                };
+                fees.Add(fee);
+            }
         }
 
         private static void Copy(int[] from, NativeArray<int> to)

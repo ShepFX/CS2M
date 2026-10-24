@@ -43,5 +43,11 @@ namespace CS2M.BaseGame.Commands
         public int[] Expenses { get; set; }
         public string[] Services { get; set; }
         public int[] Upkeep { get; set; }
+
+        /// <summary>Service fee totals (ServiceFeeSystem): the PlayerResource of each entry.</summary>
+        public int[] FeeResources { get; set; }
+
+        /// <summary>Per entry: export, import, internal and their counts (CollectedCityServiceFeeData order).</summary>
+        public float[] FeeValues { get; set; }
     }
 }
