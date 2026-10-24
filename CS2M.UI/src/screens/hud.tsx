@@ -81,7 +81,10 @@ export const MultiplayerHud = () => {
                 ))}
             </div>
             <div className={styles.messages}>
-                {messages.slice(-VISIBLE_MESSAGES).map((message, i) => (
+                {messages.slice(-VISIBLE_MESSAGES).map((message, i) => message.user === "CS2M" ? (
+                    // notices (joined, left, server started) without a sender
+                    <div key={i} className={styles.notice}>{message.text}</div>
+                ) : (
                     <div key={i} className={styles.message}>
                         <span className={styles.user} style={{color: colourOf(message.user) ?? "#9aa08f"}}>{message.user}</span>
                         <span className={styles.text}>{message.text}</span>

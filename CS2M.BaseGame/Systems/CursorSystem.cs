@@ -140,6 +140,13 @@ namespace CS2M.BaseGame.Systems
 
         public static void OnRemoteCursor(CursorCommand command)
         {
+            // still joining: the list is cleared every frame until we're playing, so each update would
+            // look like a new player (and print "joined")
+            if (Command.CurrentRole == MultiplayerRole.None)
+            {
+                return;
+            }
+
             bool joined = !Remote.TryGetValue(command.SenderId, out RemoteCursor cursor);
             if (joined)
             {

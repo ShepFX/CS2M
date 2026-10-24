@@ -112,8 +112,8 @@ namespace CS2M.BaseGame.Systems
 
             _lastKey = key;
             _lastTime = now;
-            Command.SendToAll(new RoadCommand { Courses = courses.ToArray() });
-            BaseGameLog.Info($"Road sent: {courses.Count} course(s), first {courses[0].Prefab}");
+            // Roads are sent as the applied result by NetDiffCaptureSystem: permanent definitions can't split
+            // an existing road (only the preview path does), so replaying definitions breaks junctions.
         }
 
         // Diagnostics for junctions: every road definition on the apply frame, including skipped ones

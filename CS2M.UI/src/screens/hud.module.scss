@@ -80,6 +80,13 @@ $muted: rgba(255, 255, 255, 0.6);
     padding: 2rem 0;
 }
 
+.notice {
+    font-size: 11rem;
+    font-style: italic;
+    color: $muted;
+    padding: 2rem 0;
+}
+
 .user {
     font-weight: bold;
     margin-right: 6rem;

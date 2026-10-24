@@ -87,6 +87,10 @@ namespace CS2M
             updateSystem.UpdateAfter<HostAuthoritySystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
             updateSystem.UpdateBefore<SpawnCaptureSystem, GenerateObjectsSystem>(SystemUpdatePhase.Modification1);
             updateSystem.UpdateBefore<ChargeCaptureSystem, ToolApplySystem>(SystemUpdatePhase.ApplyTool);
+            // Roads as applied: what the click created and removed, then the zoning of the new blocks
+            updateSystem.UpdateBefore<NetApplyMarkerSystem, ApplyNetSystem>(SystemUpdatePhase.ApplyTool);
+            updateSystem.UpdateAfter<NetDiffCaptureSystem, ToolOutputBarrier>(SystemUpdatePhase.ToolUpdate);
+            updateSystem.UpdateAfter<NetDiffApplySystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
             // Buildings and props placed with the object tool; taxes, budgets and the host's population
             updateSystem.UpdateBefore<PlaceCaptureSystem, ApplyObjectsSystem>(SystemUpdatePhase.ApplyTool);
             updateSystem.UpdateAfter<PlaceApplySystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
