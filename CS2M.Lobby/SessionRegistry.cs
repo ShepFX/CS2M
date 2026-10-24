@@ -16,7 +16,6 @@ public sealed class Session
     /// <summary>The host's LAN address, for joiners behind the same router.</summary>
     public IPEndPoint? Internal { get; set; }
 
-    public bool HasDetails { get; set; }
     public string? CityName { get; set; }
     public string? HostName { get; set; }
     public int PlayerCount { get; set; }
@@ -24,7 +23,6 @@ public sealed class Session
     public bool HasPassword { get; set; }
     public string? GameVersion { get; set; }
     public string? ModVersion { get; set; }
-    public DateTime Created { get; init; }
     public DateTime LastSeen { get; set; }
 
     /// <summary>From SessionDetailsCommand; null until the host sends one (older mods never do).</summary>
@@ -33,7 +31,10 @@ public sealed class Session
     /// <summary>SHA-256 of the host's TokenSecret, or null for a host that sent none (older mods).</summary>
     public byte[]? SecretHash { get; init; }
 
-    /// <summary>Keep-alives after the first registration; at 2 the session counts as confirmed.</summary>
+    /// <summary>
+    ///     Keep-alives after the first registration; at <see cref="SessionRegistry.ConfirmAfterRefreshes" /> the
+    ///     session counts as confirmed.
+    /// </summary>
     public int Refreshes { get; set; }
 
     public bool Confirmed => Refreshes >= SessionRegistry.ConfirmAfterRefreshes;
@@ -301,7 +302,7 @@ public sealed partial class SessionRegistry
                     return RegisterResult.Full;
                 }
 
-                session = new Session { Token = token!, External = external, Created = now, SecretHash = secretHash };
+                session = new Session { Token = token!, External = external, SecretHash = secretHash };
                 _sessions[token!] = session;
                 result = RegisterResult.Added;
             }
@@ -310,7 +311,6 @@ public sealed partial class SessionRegistry
             session.Internal = ParseInternal(localIp, localPort);
             if (info != null)
             {
-                session.HasDetails = true;
                 session.CityName = Clean(info.CityName, 64);
                 session.HostName = Clean(info.HostName, 32);
                 session.PlayerCount = Math.Clamp(info.PlayerCount, 0, 10000);
@@ -592,7 +592,7 @@ public sealed partial class SessionRegistry
             return _sessions.Values
                 .Where(s => !IsExpired(s, now))
                 .OrderByDescending(s => s.PlayerCount)
-                .ThenBy(s => s.CityName ?? "￿", StringComparer.OrdinalIgnoreCase)
+                .ThenBy(s => s.CityName ?? "\uFFFF", StringComparer.OrdinalIgnoreCase) // unnamed last
                 .Select(s => new SessionView(s.Token, s.CityName, s.HostName, s.PlayerCount, s.MaxPlayers,
                     s.HasPassword, s.GameVersion, s.ModVersion, s.LastSeen, s.Details))
                 .ToList();

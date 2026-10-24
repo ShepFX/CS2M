@@ -35,12 +35,12 @@ export const HostGameSettings = () => {
 
     let portValue = useValue(port);
     let usernameValue = useValue(username);
+    const hostPasswordValue = useValue(hostPassword);
     const maxPlayersValue = useValue(maxPlayers);
     const status = useValue(playerStatus);
+    const {translate} = useLocalization();
 
     const enabled = status == "INACTIVE";
-    const hostPasswordValue = useValue(hostPassword);
-    const {translate} = useLocalization();
 
     const focusChange = () => {
     };
@@ -58,12 +58,12 @@ export const HostGameSettings = () => {
                                     onChange={(val: any) => {
                                         setVal("SetUsername", val)
                                     }}></InputField>
-                        {/* empty = open session; kept for this game run only */}
+                        {/* Empty for an open session; kept for this game run only */}
                         <InputField label={"CS2M.UI.Password"} value={hostPasswordValue} disabled={!enabled} maxLength={64}
                                     onChange={(val: any) => {
                                         setVal("SetHostPassword", val)
                                     }}></InputField>
-                        {/* host included; 0 or empty is no limit */}
+                        {/* The host counts as a player; 0 or empty is no limit */}
                         <InputField label={"CS2M.UI.MaxPlayers"} value={maxPlayersValue > 0 ? String(maxPlayersValue) : ""}
                                     disabled={!enabled} maxLength={2}
                                     onChange={(val: any) => {

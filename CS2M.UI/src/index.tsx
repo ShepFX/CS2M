@@ -14,7 +14,7 @@ const register: ModRegistrar = (moduleRegistry) => {
     moduleRegistry.extend('game-ui/common/animations/transition-group-coordinator.tsx', 'TransitionGroupCoordinator', MenuUIExtensions);
 
     moduleRegistry.append('Game', CursorLabels);
-    // the HUD replaces the old chat button and panel
+    // The HUD shows the chat, so the old chat button (ChatIcon) is no longer added
     moduleRegistry.append('Game', MultiplayerHud);
     getModule('game-ui/game/components/game-panel-renderer.tsx', 'gamePanelComponents')['CS2M.UI.ChatPanel'] = ChatPanel;
 }

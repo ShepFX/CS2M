@@ -49,7 +49,7 @@ export const DisconnectNotice = () => {
     }
 
     return (
-        <div className={styles.notice_box}>
+        <div className={styles.noticeBox}>
             <span>{notice}</span>
             <button className={styles.action} onClick={() => trigger(mod.id, "DismissDisconnectNotice")}>OK</button>
         </div>

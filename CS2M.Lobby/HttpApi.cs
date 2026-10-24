@@ -7,7 +7,7 @@ namespace CS2M.Lobby;
 
 /// <summary>
 ///     Read-only JSON API for the in-game server browser: GET /sessions and GET /health.
-///     Plain HTTP; TLS is done by nginx and Cloudflare in front of it.
+///     Plain HTTP, meant to sit behind a reverse proxy that terminates TLS.
 ///     At most <see cref="LobbyConfig.HttpConcurrency" /> requests are handled at once (the rest get a 503), and
 ///     the /sessions body is built at most every <see cref="SessionsCacheTime" />, however many ask.
 /// </summary>

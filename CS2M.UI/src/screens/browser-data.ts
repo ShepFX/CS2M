@@ -176,7 +176,6 @@ export function findLive(entry: RecentEntry, sessions: LobbySession[]): LobbySes
         sessions.find(s => !!entry.name && s.name === entry.name && s.host === entry.host);
 }
 
-
 // Mods every CS2M player has because CS2M needs them (older hosts still list them): never make a session "modded".
 export function isCs2mDependency(mod: { id?: string | null, name?: string | null }): boolean {
     return mod.id === "75426" || /^i18n ?everywhere$/i.test((mod.name ?? "").trim());
