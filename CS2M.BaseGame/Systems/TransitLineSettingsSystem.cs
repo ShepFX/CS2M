@@ -27,6 +27,9 @@ namespace CS2M.BaseGame.Systems
         // a received change takes a couple of frames to land (policy events, names); ignore the line meanwhile
         private const float SuppressTime = 2f;
 
+        // long enough for the maker's settings to arrive after the line itself
+        private const float NewLineSuppressTime = 5f;
+
         private static readonly Dictionary<Entity, float> SuppressUntil = new Dictionary<Entity, float>();
 
         private EntityQuery _lines;
@@ -95,6 +98,12 @@ namespace CS2M.BaseGame.Systems
                     {
                         // a new line: only its maker sends, so the line gets the maker's number and colour
                         send = TransitLineCaptureSystem.TakeLocallyCreated(Lines.Key(settings.Line));
+                        if (!send)
+                        {
+                            // a line received from another player: the number and policies the game gives it
+                            // here are provisional until the maker's settings arrive, so they aren't sent back
+                            SuppressUntil[line] = now + NewLineSuppressTime;
+                        }
                     }
 
                     if (send)

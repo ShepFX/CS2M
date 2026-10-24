@@ -30,6 +30,7 @@ namespace CS2M.BaseGame.Systems
         private const float ConnectionWait = 5f;
         private const float SettingsWait = 10f;
         private const float MatchDistanceSq = 0.01f;
+        private const float ResolveInterval = 0.25f;
 
         private class WaitingSettings
         {
@@ -40,6 +41,7 @@ namespace CS2M.BaseGame.Systems
         private readonly List<CommandBase> _ordered = new List<CommandBase>();
         private readonly List<WaitingSettings> _settings = new List<WaitingSettings>();
         private float _waitStart = -1f;
+        private float _lastResolve;
 
         private PrefabSystem _prefabSystem;
         private NameSystem _nameSystem;
@@ -61,13 +63,13 @@ namespace CS2M.BaseGame.Systems
 
             float now = UnityEngine.Time.realtimeSinceStartup;
 
-            // settings from earlier frames go first: a line built last frame has had its number assigned by
-            // the game since, and would otherwise overwrite the one received
+            // settings waiting for their line go first. A line built here still carries Created until the game
+            // has assigned its own number (next frame), which would otherwise overwrite the one received
             for (int i = 0; i < _settings.Count; i++)
             {
                 WaitingSettings waiting = _settings[i];
                 Entity route = Lines.Find(EntityManager, _prefabSystem, waiting.Command.Line);
-                if (route != Entity.Null)
+                if (route != Entity.Null && !EntityManager.HasComponent<Created>(route))
                 {
                     ApplySettings(route, waiting.Command);
                 }
@@ -94,7 +96,17 @@ namespace CS2M.BaseGame.Systems
                 CommandBase command = _ordered[0];
                 if (command is TransitLineSettingsCommand settings)
                 {
-                    _settings.Add(new WaitingSettings { Command = settings, Since = now });
+                    // applied right away when the line is already settled, so a reshape queued right after it
+                    // can't move the line away from the waypoints this command names
+                    Entity route = Lines.Find(EntityManager, _prefabSystem, settings.Line);
+                    if (route != Entity.Null && !EntityManager.HasComponent<Created>(route))
+                    {
+                        ApplySettings(route, settings);
+                    }
+                    else
+                    {
+                        _settings.Add(new WaitingSettings { Command = settings, Since = now });
+                    }
                 }
                 else if (command is TransitLineDeleteCommand delete)
                 {
@@ -102,6 +114,13 @@ namespace CS2M.BaseGame.Systems
                 }
                 else if (command is TransitLineCommand line)
                 {
+                    // each stop lookup scans every object, so retry a waiting line a few times a second only
+                    if (_waitStart >= 0f && now - _lastResolve < ResolveInterval)
+                    {
+                        break;
+                    }
+
+                    _lastResolve = now;
                     Entity[] connections = ResolveConnections(line, out int missing);
                     if (missing > 0)
                     {
@@ -164,9 +183,12 @@ namespace CS2M.BaseGame.Systems
                 buffer.AddComponent<Deleted>(waypoint.m_Waypoint);
             }
 
-            foreach (RouteSegment segment in EntityManager.GetBuffer<RouteSegment>(route, true))
+            if (EntityManager.HasBuffer<RouteSegment>(route))
             {
-                buffer.AddComponent<Deleted>(segment.m_Segment);
+                foreach (RouteSegment segment in EntityManager.GetBuffer<RouteSegment>(route, true))
+                {
+                    buffer.AddComponent<Deleted>(segment.m_Segment);
+                }
             }
 
             buffer.AddComponent<Deleted>(route);
@@ -276,9 +298,12 @@ namespace CS2M.BaseGame.Systems
             }
 
             var oldSegments = new List<Entity>();
-            foreach (RouteSegment segment in EntityManager.GetBuffer<RouteSegment>(route, true))
+            if (EntityManager.HasBuffer<RouteSegment>(route))
             {
-                oldSegments.Add(segment.m_Segment);
+                foreach (RouteSegment segment in EntityManager.GetBuffer<RouteSegment>(route, true))
+                {
+                    oldSegments.Add(segment.m_Segment);
+                }
             }
 
             var buffer = new EntityCommandBuffer(Allocator.Temp);
