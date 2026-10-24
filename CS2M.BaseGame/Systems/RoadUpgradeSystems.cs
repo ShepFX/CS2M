@@ -99,7 +99,7 @@ namespace CS2M.BaseGame.Systems
             // Upgrades and road replacement use the road tool; street-tree types are placed with the object
             // tool, which upgrades the segments through the same Temp copies
             if (Command.CurrentRole == MultiplayerRole.None ||
-                !(_toolSystem.activeTool is NetToolSystem || _toolSystem.activeTool is ObjectToolSystem))
+                !(PlaceCaptureSystem.ApplyingTool(_toolSystem) is NetToolSystem || PlaceCaptureSystem.ApplyingTool(_toolSystem) is ObjectToolSystem))
             {
                 return;
             }

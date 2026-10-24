@@ -31,7 +31,7 @@ namespace CS2M.BaseGame.Systems
 
         protected override void OnUpdate()
         {
-            if (_toolSystem.activeTool is AreaToolSystem || _toolSystem.activeTool is ObjectToolSystem)
+            if (PlaceCaptureSystem.ApplyingTool(_toolSystem) is AreaToolSystem || PlaceCaptureSystem.ApplyingTool(_toolSystem) is ObjectToolSystem)
             {
                 AreaToolApplied = true;
             }

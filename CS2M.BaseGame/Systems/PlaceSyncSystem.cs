@@ -209,6 +209,16 @@ namespace CS2M.BaseGame.Systems
         /// <summary>Set when this frame's placement went out from definitions (read and reset by LotBuildingCaptureSystem).</summary>
         public static bool SentThisFrame;
 
+        private static readonly System.Reflection.FieldInfo LastTool =
+            typeof(ToolSystem).GetField("m_LastTool", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+        /// <summary>
+        ///     The tool whose apply is running (ToolSystem.applyMode reads the same field); activeTool can already
+        ///     be the next tool by then.
+        /// </summary>
+        public static ToolBaseSystem ApplyingTool(ToolSystem toolSystem) =>
+            LastTool?.GetValue(toolSystem) as ToolBaseSystem ?? toolSystem.activeTool;
+
 
         private EntityQuery _definitions;
         private ToolSystem _toolSystem;
@@ -227,8 +237,9 @@ namespace CS2M.BaseGame.Systems
 
         protected override void OnUpdate()
         {
+            // a move switches back to the default tool during the click, so ask which tool is applying
             if (Command.CurrentRole == MultiplayerRole.None || Command.SendToAll == null ||
-                !(_toolSystem.activeTool is ObjectToolSystem))
+                !(ApplyingTool(_toolSystem) is ObjectToolSystem))
             {
                 return;
             }
