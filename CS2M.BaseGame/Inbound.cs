@@ -87,7 +87,10 @@ namespace CS2M.BaseGame
 
         public static bool Finite(float v) => !float.IsNaN(v) && !float.IsInfinity(v);
 
-        public static bool Small(float v) => Finite(v) && Math.Abs(v) <= MaxValue;
+        // float.MinValue/MaxValue are the game's own "not set" markers (e.g. Game.Areas.Node elevation,
+        // object elevation), so they pass; NaN and infinity never do
+        public static bool Small(float v) =>
+            v == float.MinValue || v == float.MaxValue || (Finite(v) && Math.Abs(v) <= MaxValue);
 
         public static float Clamp(float v, float min, float max, float fallback = 0f) =>
             Finite(v) ? Math.Max(min, Math.Min(max, v)) : fallback;
