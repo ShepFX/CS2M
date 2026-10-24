@@ -32,6 +32,8 @@ namespace CS2M.BaseGame.Systems
         // how long a joiner keeps a tile it bought before the host's answer can lock it again
         private const float RequestGrace = 5f;
         private const float MatchDistance = 50f;
+        // new tiles count as a purchase only this soon after the purchase panel had a selection
+        private const float SelectionWindow = 2f;
 
         private MapTilePurchaseSystem _purchaseSystem;
         private CitySystem _citySystem;
@@ -43,7 +45,7 @@ namespace CS2M.BaseGame.Systems
         private float _lastHostSend;
         private float _graceUntil;
         private int _lastCost;
-        private bool _selectionSeen;
+        private float _selectionSeenAt = -1f;
         private HashSet<long> _known;
 
         protected override void OnCreate()
@@ -70,7 +72,7 @@ namespace CS2M.BaseGame.Systems
                 _role = role;
                 _roleSince = now;
                 _known = null;
-                _selectionSeen = false;
+                _selectionSeenAt = -1f;
                 _lastHostSend = 0f;
                 _graceUntil = 0f;
             }
@@ -87,7 +89,7 @@ namespace CS2M.BaseGame.Systems
                 if (_purchaseSystem.selecting && _purchaseSystem.GetSelectedTileCount() > 0)
                 {
                     _lastCost = _purchaseSystem.cost;
-                    _selectionSeen = true;
+                    _selectionSeenAt = now;
                 }
             }
 
@@ -217,14 +219,16 @@ namespace CS2M.BaseGame.Systems
                     }
                 }
 
-                if (bought.Count > 0 && !_selectionSeen)
+                // the click clears the selection, so look back a little; a cancelled selection long ago doesn't count
+                bool fromPanel = _selectionSeenAt >= 0f && now - _selectionSeenAt <= SelectionWindow;
+                if (bought.Count > 0 && !fromPanel)
                 {
                     // not from the purchase panel (e.g. a tutorial unlocking tiles); the host's set decides
                     BaseGameLog.Warn($"Map tiles unlocked here without a purchase ({bought.Count / 2}); keeping the host's");
                 }
                 else if (bought.Count > 0)
                 {
-                    _selectionSeen = false;
+                    _selectionSeenAt = -1f;
                     Command.SendToServer?.Invoke(new TilePurchaseRequestCommand { Tiles = bought.ToArray(), Cost = _lastCost });
                     _graceUntil = now + RequestGrace;
                     BaseGameLog.Info($"Map tile purchase sent: {bought.Count / 2} tiles for {_lastCost}");

@@ -224,7 +224,12 @@ namespace CS2M.BaseGame.Systems
                 EntityManager.SetComponentData(city, xp);
             }
 
-            if (EntityManager.HasComponent<Creditworthiness>(city))
+            // When the host is a milestone ahead, its points and credit limit already include that milestone's
+            // reward, and this game's MilestoneSystem is about to add it again. Keep ours until we've caught up,
+            // or a purchase made meanwhile could spend points the host doesn't have.
+            int local = GetMilestone();
+            bool catchingUp = local >= 0 && command.Milestone > local;
+            if (!catchingUp && EntityManager.HasComponent<Creditworthiness>(city))
             {
                 EntityManager.SetComponentData(city, new Creditworthiness { m_Amount = command.Creditworthiness });
             }
@@ -238,7 +243,11 @@ namespace CS2M.BaseGame.Systems
                 _knownLoan = command.LoanAmount;
             }
 
-            _devTreeSystem.points = command.DevTreePoints;
+            if (!catchingUp)
+            {
+                _devTreeSystem.points = command.DevTreePoints;
+            }
+
             _hostMilestone = command.Milestone;
         }
 
