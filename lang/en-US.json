@@ -116,5 +116,21 @@
   "CS2M.UI.Browser.MinutesAgo": "{N} min ago",
   "CS2M.UI.Browser.HoursAgo": "{N} h ago",
   "CS2M.UI.Browser.DaysAgo": "{N} days ago",
-  "CS2M.UI.Password": "Password"
+  "CS2M.UI.Password": "Password",
+  "CS2M.UI.Hud.Title.One": "Multiplayer · {N} player",
+  "CS2M.UI.Hud.Title.Many": "Multiplayer · {N} players",
+  "CS2M.UI.Hud.You": "(you)",
+  "CS2M.UI.Resync.Button": "Resync",
+  "CS2M.UI.Resync.All": "Resync all",
+  "CS2M.UI.Resync.Hint": "Download the host's city again",
+  "CS2M.UI.Resync.AllHint": "Send the city to everyone again",
+  "CS2M.UI.Resync.Loading": "Loading the host's city…",
+  "CS2M.UI.Resync.Downloading": "Downloading the host's city…",
+  "CS2M.UI.Resync.DownloadingPercent": "Downloading the host's city {N}%",
+  "CS2M.UI.Moderation.Moderate": "Moderate {NAME}",
+  "CS2M.UI.Moderation.Kick": "Kick",
+  "CS2M.UI.Moderation.Ban": "Ban",
+  "CS2M.UI.Moderation.ConfirmBan": "Ban {NAME}?",
+  "CS2M.UI.Moderation.Cancel": "Cancel",
+  "CS2M.UI.Moderation.OK": "OK"
 }

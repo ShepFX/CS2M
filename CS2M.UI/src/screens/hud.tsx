@@ -3,6 +3,7 @@ import {getModule} from "cs2/modding";
 import {useLocalization} from "cs2/l10n";
 import {useEffect, useState} from "react";
 import {setVal} from "api";
+import {format} from "../util/format";
 import mod from "../../mod.json";
 import styles from "./hud.module.scss";
 import {ResyncButton, ResyncStatus} from "./resync";
@@ -71,7 +72,7 @@ export const MultiplayerHud = () => {
     return (
         <div className={styles.hud}>
             <div className={styles.header}>
-                <span className={styles.title}>Multiplayer · {players.length} player{players.length === 1 ? "" : "s"}</span>
+                <span className={styles.title}>{format(translate(players.length === 1 ? "CS2M.UI.Hud.Title.One" : "CS2M.UI.Hud.Title.Many"), {N: players.length})}</span>
                 <ResyncButton host={players.some(p => p.me && p.n.endsWith(" (host)"))}/>
                 <button className={styles.hide} onClick={() => setVal("SetHudCollapsed", true)}>–</button>
             </div>
@@ -79,7 +80,7 @@ export const MultiplayerHud = () => {
                 {players.map(player => (
                     <div key={player.n} className={styles.player}>
                         <span className={styles.swatch} style={{backgroundColor: player.c}}/>
-                        <span className={styles.name}>{player.n}{player.me ? " (you)" : ""}</span>
+                        <span className={styles.name}>{player.me ? `${player.n} ${translate("CS2M.UI.Hud.You") ?? ""}` : player.n}</span>
                         {player.a && <span className={styles.activity}>{player.a}</span>}
                         {!player.me && player.id !== undefined && <PlayerActions id={player.id} name={player.n}/>}
                     </div>

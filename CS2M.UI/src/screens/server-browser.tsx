@@ -5,6 +5,7 @@ import {LocalizedDate, LocalizedNumber, Unit, useLocalization} from "cs2/l10n";
 import {Scrollable} from "cs2/ui";
 import mod from "../../mod.json";
 import {setVal} from "../api";
+import {format} from "../util/format";
 import styles from "./server-browser.module.scss";
 import {
     checkSession,
@@ -62,15 +63,6 @@ function joinAddress(ip: string, portNumber: number) {
     setVal("SetJoinIpAddress", ip);
     trigger(mod.id, "SetJoinPort", portNumber);
     joinGame();
-}
-
-/** Fills {NAME} placeholders in a translated string. */
-function format(text: string | null, args: Record<string, string | number>): string {
-    let result = text ?? "";
-    for (const key of Object.keys(args)) {
-        result = result.split("{" + key + "}").join(String(args[key]));
-    }
-    return result;
 }
 
 function playersText(session: LobbySession): string {
