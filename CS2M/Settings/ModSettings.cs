@@ -61,6 +61,14 @@ namespace CS2M.Settings
         [SettingsUIHidden]
         public string BannedAddresses { get; set; }
 
+        // Player limit for hosted sessions, the host included; 0 is no limit
+        [SettingsUIHidden]
+        public int HostMaxPlayers { get; set; }
+
+        // Sessions joined lately, newest first, as JSON (see UI/RecentSessions.cs)
+        [SettingsUIHidden]
+        public string RecentSessions { get; set; }
+
         public ModSettings(IMod mod) : base(mod)
         {
             SetDefaults();
@@ -76,6 +84,8 @@ namespace CS2M.Settings
             LastJoinPort = 4230;
             LastHostPort = 4230;
             LastUsername = "";
+            HostMaxPlayers = 0;
+            RecentSessions = "";
         }
 
         public static DropdownItem<int>[] GetLoggingLevels()

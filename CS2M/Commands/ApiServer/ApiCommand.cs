@@ -29,6 +29,7 @@ namespace CS2M.Commands.ApiServer
             typeof(ServerRegistrationCommand),
             typeof(SessionInfoCommand),
             typeof(ServerUnregisterCommand),
+            typeof(SessionDetailsCommand),
         };
 
         /// <summary>

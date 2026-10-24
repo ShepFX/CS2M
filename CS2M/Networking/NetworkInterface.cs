@@ -242,6 +242,42 @@ namespace CS2M.Networking
                 .Any(p => p.NetPeer.Id == peer.Id);
         }
 
+        /// <summary>
+        ///     Remote players whose connection is still up.
+        /// </summary>
+        public IEnumerable<RemotePlayer> ConnectedRemotePlayers =>
+            PlayerListConnected.OfType<RemotePlayer>().Where(IsConnected);
+
+        /// <summary>
+        ///     Players in the session, the local player included.
+        /// </summary>
+        public int ConnectedPlayerCount => 1 + ConnectedRemotePlayers.Count();
+
+        /// <summary>
+        ///     Host: a player's connection closed. Frees their slot and username.
+        /// </summary>
+        public void PlayerDisconnected(RemotePlayer player)
+        {
+            if (player == null)
+            {
+                return;
+            }
+
+            Log.Debug($"RemotePlayer '{player.Username}' disconnected.");
+            PlayerListConnected.Remove(player);
+            PlayerListJoined.Remove(player);
+            PlayerDisconnectedEvent?.Invoke(player);
+        }
+
+        /// <summary>
+        ///     Forgets every remote player, when the session ends.
+        /// </summary>
+        public void ClearRemotePlayers()
+        {
+            PlayerListConnected.RemoveAll(p => p is RemotePlayer);
+            PlayerListJoined.RemoveAll(p => p is RemotePlayer);
+        }
+
         public void PlayerConnected(RemotePlayer player)
         {
             Log.Debug($"RemotePlayer '{player.Username}' connected.");

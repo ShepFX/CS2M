@@ -153,7 +153,12 @@ namespace CS2M.Networking
                 errors.Add("precondition:USERNAME_NOT_AVAILABLE");
             }
 
-            if (err.HasFlag(PreconditionsUtil.Errors.PASSWORD_INCORRECT))
+            if (err.HasFlag(PreconditionsUtil.Errors.SERVER_FULL))
+            {
+                errors.Add("precondition:SERVER_FULL");
+            }
+
+                        if (err.HasFlag(PreconditionsUtil.Errors.PASSWORD_INCORRECT))
             {
                 errors.Add("precondition:PASSWORD_INCORRECT");
             }
@@ -323,7 +328,8 @@ namespace CS2M.Networking
 
             if (PlayerType == PlayerType.SERVER)
             {
-                //TODO: Clear server variables (player list, etc.)
+                //TODO: Clear the remaining server variables
+                NetworkInterface.Instance.ClearRemotePlayers();
             }
             else if (PlayerType == PlayerType.CLIENT)
             {
