@@ -179,8 +179,8 @@ namespace CS2M.BaseGame.Systems
                     m_Elevation = new float2(data.Course.Elevation[0], data.Course.Elevation[1]),
                     m_Length = data.Course.Length,
                     m_FixedIndex = data.Course.FixedIndex,
-                    m_StartPosition = RoadApplySystem.Pos(em, data.Course.Start),
-                    m_EndPosition = RoadApplySystem.Pos(em, data.Course.End)
+                    m_StartPosition = RoadApplySystem.Pos(em, data.Course.Start, joinExisting: true),
+                    m_EndPosition = RoadApplySystem.Pos(em, data.Course.End, joinExisting: true)
                 });
             }
 

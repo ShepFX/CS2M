@@ -96,12 +96,22 @@ namespace CS2M.BaseGame.Systems
             }
         }
 
-        public static CoursePos Pos(EntityManager em, CoursePosData data)
+        /// <param name="joinExisting">
+        ///     A building's own pipes/roads/power lines are defined with free ends. If a junction already sits at
+        ///     exactly that spot here (e.g. the pipe arrived before the building), join it, or the two stay
+        ///     unconnected and the simulation treats the building as cut off.
+        /// </param>
+        public static CoursePos Pos(EntityManager em, CoursePosData data, bool joinExisting = false)
         {
             if (!NetRefs.Resolve(em, data.Entity, out Entity entity))
             {
                 // the junction or road it snapped to isn't here; the road still gets built, unconnected
                 BaseGameLog.Warn($"Road end connects to something missing here at {NetRefs.V3(data.Position)}");
+            }
+
+            if (joinExisting && entity == Entity.Null && (data.Entity == null || data.Entity.Kind == 0))
+            {
+                NetRefs.Resolve(em, new NetRef { Kind = 1, A = data.Position }, out entity);
             }
 
             return new CoursePos
