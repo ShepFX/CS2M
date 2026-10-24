@@ -15,7 +15,10 @@ namespace CS2M.BaseGame
     /// </summary>
     internal static class AreaRefs
     {
+        // matched on x/z only: node heights are recomputed from the terrain on each game
         private const float MatchDistanceSq = 0.25f;
+
+        private static float Dist2(float3 a, float3 b) => math.distancesq(a.xz, b.xz);
 
         public static AreaKey Key(EntityManager em, PrefabSystem prefabSystem, Entity area)
         {
@@ -89,7 +92,7 @@ namespace CS2M.BaseGame
                     }
 
                     DynamicBuffer<AreaNode> nodes = em.GetBuffer<AreaNode>(entities[i], true);
-                    if (nodes.Length != count || math.distancesq(nodes[0].m_Position, first) >= MatchDistanceSq)
+                    if (nodes.Length != count || Dist2(nodes[0].m_Position, first) >= MatchDistanceSq)
                     {
                         continue;
                     }
@@ -98,7 +101,7 @@ namespace CS2M.BaseGame
                     for (int n = 1; n < count && match; n++)
                     {
                         var p = new float3(key.Nodes[n * 3], key.Nodes[n * 3 + 1], key.Nodes[n * 3 + 2]);
-                        match = math.distancesq(nodes[n].m_Position, p) < MatchDistanceSq;
+                        match = Dist2(nodes[n].m_Position, p) < MatchDistanceSq;
                     }
 
                     if (match)

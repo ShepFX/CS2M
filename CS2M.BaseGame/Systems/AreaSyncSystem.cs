@@ -100,8 +100,23 @@ namespace CS2M.BaseGame.Systems
             if (!applied || Command.CurrentRole == MultiplayerRole.None || Command.SendToAll == null)
             {
                 AreaApplyMarkerSystem.OldOutlines.Clear();
+                AreaApplySystem.Received.Clear();
                 return;
             }
+
+            try
+            {
+                Capture();
+            }
+            finally
+            {
+                AreaApplyMarkerSystem.OldOutlines.Clear();
+                AreaApplySystem.Received.Clear();
+            }
+        }
+
+        private void Capture()
+        {
 
             bool bulldozer = AreaApplyMarkerSystem.ByBulldozer;
             var deleted = new List<AreaKey>();
@@ -111,8 +126,10 @@ namespace CS2M.BaseGame.Systems
             {
                 foreach (Entity entity in entities)
                 {
-                    // map tiles are bought, not drawn; areas owned by another area are generated from it
-                    if (EntityManager.HasComponent<MapTile>(entity))
+                    // map tiles are bought, not drawn; areas owned by another area are generated from it.
+                    // Received changes are applied in the previous frame's PreSimulation and keep their
+                    // Deleted/Updated tags until this frame's cleanup, so they must not be sent back.
+                    if (EntityManager.HasComponent<MapTile>(entity) || AreaApplySystem.Received.Contains(entity))
                     {
                         continue;
                     }
@@ -171,7 +188,6 @@ namespace CS2M.BaseGame.Systems
                 }
             }
 
-            AreaApplyMarkerSystem.OldOutlines.Clear();
             if (deleted.Count == 0 && updated.Count == 0 && created.Count == 0)
             {
                 return;
@@ -204,12 +220,24 @@ namespace CS2M.BaseGame.Systems
                 packed[i * 4 + 3] = nodes[i].m_Elevation;
             }
 
+            NetRef ownerRef = null;
+            if (owner != Entity.Null)
+            {
+                // without its building the other game would get a loose extractor/lot area
+                ownerRef = NetRefs.Describe(EntityManager, owner, _prefabSystem);
+                if (ownerRef.Kind == 0)
+                {
+                    BaseGameLog.Warn($"Area {prefab} not sent: its owner can't be described");
+                    return null;
+                }
+            }
+
             var data = new AreaDataCmd
             {
                 Prefab = prefab,
                 Nodes = packed,
                 Complete = (EntityManager.GetComponentData<Area>(entity).m_Flags & AreaFlags.Complete) != 0,
-                Owner = owner != Entity.Null ? NetRefs.Describe(EntityManager, owner, _prefabSystem) : null,
+                Owner = ownerRef,
                 Seed = EntityManager.HasComponent<PseudoRandomSeed>(entity) ? EntityManager.GetComponentData<PseudoRandomSeed>(entity).m_Seed : 0
             };
 
@@ -239,6 +267,9 @@ namespace CS2M.BaseGame.Systems
     public partial class AreaApplySystem : GameSystemBase
     {
         public static readonly ConcurrentQueue<AreaChangeCommand> Pending = new ConcurrentQueue<AreaChangeCommand>();
+
+        // areas this system tagged Deleted/Updated, skipped (and cleared) by the next AreaCaptureSystem run
+        public static readonly HashSet<Entity> Received = new HashSet<Entity>();
 
         private PrefabSystem _prefabSystem;
         private EntityArchetype _archetype;
@@ -297,9 +328,26 @@ namespace CS2M.BaseGame.Systems
                     }
 
                     SetCache(area, update.New);
-                    if (!EntityManager.HasComponent<Updated>(area))
+                    MarkUpdated(area);
+
+                    // generated sub-areas (Slave) copy their owner's outline only when they are Updated
+                    // themselves (GeometrySystem); on the sender ApplyAreasSystem updates them via their Temps
+                    if (EntityManager.HasBuffer<SubArea>(area))
                     {
-                        EntityManager.AddComponent<Updated>(area);
+                        var children = new List<Entity>();
+                        foreach (SubArea subArea in EntityManager.GetBuffer<SubArea>(area, true))
+                        {
+                            children.Add(subArea.m_Area);
+                        }
+
+                        foreach (Entity child in children)
+                        {
+                            if (EntityManager.Exists(child) && EntityManager.HasComponent<Area>(child) &&
+                                (EntityManager.GetComponentData<Area>(child).m_Flags & AreaFlags.Slave) != 0)
+                            {
+                                MarkUpdated(child);
+                            }
+                        }
                     }
 
                     AddOwner(area, owners);
@@ -387,6 +435,15 @@ namespace CS2M.BaseGame.Systems
             }
         }
 
+        private void MarkUpdated(Entity area)
+        {
+            Received.Add(area);
+            if (!EntityManager.HasComponent<Updated>(area))
+            {
+                EntityManager.AddComponent<Updated>(area);
+            }
+        }
+
         private void AddOwner(Entity area, HashSet<Entity> owners)
         {
             if (EntityManager.HasComponent<Owner>(area))
@@ -425,6 +482,7 @@ namespace CS2M.BaseGame.Systems
                 }
             }
 
+            Received.Add(area);
             EntityManager.AddComponent<Deleted>(area);
         }
 
