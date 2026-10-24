@@ -1,0 +1,74 @@
+#!/bin/sh
+# Rate limits for the CS2M lobby's UDP port, in front of Docker: install as /usr/local/sbin/cs2-lobby-firewall,
+# applied at boot by cs2-lobby-firewall.service.
+#
+# Its own nftables table (ip cs2lobby), so nothing else is touched: not Docker's iptables-nft tables, not
+# fail2ban's inet f2b-table, not /etc/iptables/rules.v4. The chain hooks prerouting at raw priority (-300), which
+# runs before conntrack and before Docker's DNAT, so dropped packets never reach docker-proxy, conntrack or .NET.
+#
+#   cs2-lobby-firewall            apply (replaces the table atomically; safe to run again)
+#   cs2-lobby-firewall --print    print the ruleset, change nothing
+#   cs2-lobby-firewall --dry-run  print it and have nft check it against the kernel (nft -c), change nothing
+#   cs2-lobby-firewall --status   show the live table with its counters
+#   cs2-lobby-firewall --remove   delete the table (back to no limits)
+set -eu
+
+PORT=4242
+# Per source address. A host sends about 1 packet a second (keep-alive plus details every 10 s), a joiner a
+# handful, so 50 a second with bursts of 100 only hits floods. Sources are remembered for 1 minute, up to 65535.
+PER_SOURCE=50
+PER_SOURCE_BURST=100
+# All sources together. A thousand hosts are about 700 packets a second; the lobby's own budget is 2000.
+GLOBAL=2500
+GLOBAL_BURST=2500
+
+ruleset() {
+    cat <<RULES
+table ip cs2lobby
+delete table ip cs2lobby
+table ip cs2lobby {
+    set udp_sources {
+        type ipv4_addr
+        size 65535
+        flags dynamic,timeout
+        timeout 1m
+    }
+
+    chain prerouting {
+        type filter hook prerouting priority raw; policy accept;
+        udp dport $PORT jump lobby
+    }
+
+    chain lobby {
+        update @udp_sources { ip saddr limit rate over $PER_SOURCE/second burst $PER_SOURCE_BURST packets } counter drop
+        limit rate over $GLOBAL/second burst $GLOBAL_BURST packets counter drop
+        counter
+    }
+}
+RULES
+}
+
+case "${1:-}" in
+    "")
+        ruleset | nft -f -
+        echo "cs2lobby: udp/$PORT limited to $PER_SOURCE/s per source, $GLOBAL/s in total"
+        ;;
+    --print)
+        ruleset
+        ;;
+    --dry-run)
+        ruleset
+        ruleset | nft -c -f - && echo "nft -c: ruleset OK (nothing applied)"
+        ;;
+    --status)
+        nft list table ip cs2lobby
+        ;;
+    --remove)
+        nft delete table ip cs2lobby 2>/dev/null || true
+        echo "cs2lobby: table removed"
+        ;;
+    *)
+        echo "usage: $0 [--print|--dry-run|--status|--remove]" >&2
+        exit 2
+        ;;
+esac

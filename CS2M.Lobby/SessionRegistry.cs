@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -27,6 +29,49 @@ public sealed class Session
 
     /// <summary>From SessionDetailsCommand; null until the host sends one (older mods never do).</summary>
     public SessionDetailsView? Details { get; set; }
+
+    /// <summary>SHA-256 of the host's TokenSecret, or null for a host that sent none (older mods).</summary>
+    public byte[]? SecretHash { get; init; }
+
+    /// <summary>Keep-alives after the first registration; at 2 the session counts as confirmed.</summary>
+    public int Refreshes { get; set; }
+
+    public bool Confirmed => Refreshes >= SessionRegistry.ConfirmAfterRefreshes;
+
+    // A host without a secret moves to a new port only after it keeps using it (see SessionRegistry.MovePort)
+    public int PendingPort { get; set; }
+    public int PendingPortHits { get; set; }
+    public DateTime PendingPortSince { get; set; }
+
+    public DateTime IntroWindow { get; set; }
+    public int IntroCount { get; set; }
+    public int PortChecks { get; set; }
+}
+
+/// <summary>Who owned a token that expired or was closed, so nobody else can take it over for a while.</summary>
+internal sealed record Tombstone(string Token, byte[]? SecretHash, IPAddress Owner, DateTime Expires);
+
+/// <summary>The host's endpoints for a NAT introduction.</summary>
+public sealed record HostEndpoints(IPEndPoint External, IPEndPoint? Internal, string Token);
+
+public enum IntroduceResult
+{
+    Ok,
+    Unknown,
+    SessionLimited
+}
+
+public enum PortCheckStatus
+{
+    /// <summary>No session at exactly that address and port (yet).</summary>
+    NoSession,
+
+    /// <summary>The session hasn't sent enough keep-alives yet.</summary>
+    NotConfirmed,
+    Ready,
+
+    /// <summary>The session already had its port checks.</summary>
+    Exhausted
 }
 
 public sealed record PlayerView(string Name, string? Color);
@@ -52,14 +97,26 @@ public enum RegisterResult
     Refreshed,
     Invalid,
     TokenTaken,
-    Full
+    Full,
+
+    /// <summary>A host without a secret sent from a new port; held until it keeps using it.</summary>
+    PortChangeHeld
 }
 
-/// <summary>Live sessions by token. Thread safe: the UDP loop writes, the HTTP API reads.</summary>
+/// <summary>Live sessions by token. Thread safe: the UDP side writes, the HTTP API reads.</summary>
 public sealed partial class SessionRegistry
 {
+    public const int ConfirmAfterRefreshes = 2;
+    public const int MaxPortChecksPerSession = 2;
+    private const int MaxTombstones = 50_000;
+    private const int PortMoveHits = 3;
+    private static readonly TimeSpan PortMoveAfter = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan IntroWindowLength = TimeSpan.FromMinutes(1);
+
     private readonly LobbyConfig _config;
     private readonly Dictionary<string, Session> _sessions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Tombstone> _tombstones = new(StringComparer.Ordinal);
+    private readonly Queue<Tombstone> _tombstoneOrder = new();
     private readonly object _lock = new();
 
     public SessionRegistry(LobbyConfig config)
@@ -78,15 +135,53 @@ public sealed partial class SessionRegistry
         }
     }
 
+    public int ConfirmedCount
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _sessions.Values.Count(s => s.Confirmed);
+            }
+        }
+    }
+
     [GeneratedRegex("^[A-Za-z0-9_-]{4,64}$")]
     private static partial Regex TokenPattern();
+
+    [GeneratedRegex("^[A-Za-z0-9_-]{22,128}$")]
+    private static partial Regex SecretPattern();
 
     public static bool IsValidToken(string? token)
     {
         return token != null && TokenPattern().IsMatch(token);
     }
 
-    public RegisterResult Register(IPEndPoint external, string? token, string? localIp, int localPort,
+    /// <summary>
+    ///     A host secret: 22 to 128 characters of A-Z, a-z, 0-9, '-' and '_' (base64url or hex of at least 16
+    ///     random bytes). Null or empty means the host sent none.
+    /// </summary>
+    public static bool IsValidSecret(string? secret)
+    {
+        return secret != null && SecretPattern().IsMatch(secret);
+    }
+
+    private static byte[] HashSecret(string secret)
+    {
+        return SHA256.HashData(Encoding.ASCII.GetBytes(secret));
+    }
+
+    private static bool SecretMatches(byte[]? stored, byte[]? given)
+    {
+        return stored != null && given != null && CryptographicOperations.FixedTimeEquals(stored, given);
+    }
+
+    /// <summary>
+    ///     A keep-alive (SessionInfo, or the older ServerRegistration with <paramref name="info" /> null).
+    ///     Ownership: a session registered with a secret only accepts that secret, from any address. One without
+    ///     a secret accepts its own address, and moves to a new port only once the host keeps using it.
+    /// </summary>
+    public RegisterResult Register(IPEndPoint external, string? token, string? secret, string? localIp, int localPort,
         Protocol.SessionInfoMessage? info)
     {
         if (!IsValidToken(token))
@@ -94,32 +189,119 @@ public sealed partial class SessionRegistry
             return RegisterResult.Invalid;
         }
 
+        byte[]? secretHash = null;
+        if (!string.IsNullOrEmpty(secret))
+        {
+            if (!IsValidSecret(secret))
+            {
+                return RegisterResult.Invalid;
+            }
+
+            secretHash = HashSecret(secret);
+        }
+
         DateTime now = DateTime.UtcNow;
         lock (_lock)
         {
             RegisterResult result;
-            if (_sessions.TryGetValue(token!, out Session? session) && !IsExpired(session, now))
+            if (_sessions.TryGetValue(token!, out Session? session) && IsExpired(session, now))
             {
-                // A token belongs to the host that registered it. The port may change if the host's router
-                // remaps it, the address may not: otherwise anyone could take over a listed session.
-                if (!session.External.Address.Equals(external.Address))
+                Remove(session, now);
+                session = null;
+            }
+
+            if (session != null)
+            {
+                if (session.SecretHash != null)
                 {
-                    return RegisterResult.TokenTaken;
+                    if (!SecretMatches(session.SecretHash, secretHash))
+                    {
+                        return RegisterResult.TokenTaken;
+                    }
+
+                    // The secret proves it's the host, so its address may change too (new ISP lease, roaming)
+                    session.External = external;
+                }
+                else
+                {
+                    // No secret: the address must stay, and the port only moves when the host keeps using the new one
+                    if (!session.External.Address.Equals(external.Address))
+                    {
+                        return RegisterResult.TokenTaken;
+                    }
+
+                    if (session.External.Port != external.Port)
+                    {
+                        if (!MovePort(session, external, now))
+                        {
+                            return RegisterResult.PortChangeHeld;
+                        }
+                    }
+                    else
+                    {
+                        session.PendingPort = 0;
+                        session.PendingPortHits = 0;
+                    }
                 }
 
-                session.External = external;
+                session.Refreshes = Math.Min(session.Refreshes + 1, 1_000_000);
+                if (session.Refreshes == ConfirmAfterRefreshes &&
+                    _sessions.Values.Count(s => s.Confirmed && !IsExpired(s, now)) > _config.MaxSessions)
+                {
+                    // Only confirmed sessions count toward the limit; this one just became one too many
+                    _sessions.Remove(session.Token);
+                    return RegisterResult.Full;
+                }
+
                 result = RegisterResult.Refreshed;
             }
             else
             {
-                if (_sessions.Count >= _config.MaxSessions ||
-                    _sessions.Values.Count(s => s.External.Address.Equals(external.Address) && !IsExpired(s, now)) >=
-                    _config.MaxSessionsPerIp)
+                if (_tombstones.TryGetValue(token!, out Tombstone? tomb))
+                {
+                    if (tomb.Expires > now &&
+                        !(tomb.SecretHash != null
+                            ? SecretMatches(tomb.SecretHash, secretHash)
+                            : tomb.Owner.Equals(external.Address)))
+                    {
+                        return RegisterResult.TokenTaken;
+                    }
+
+                    _tombstones.Remove(token!);
+                }
+
+                int pending = 0, sameAddress = 0, sameSubnet = 0;
+                ulong subnet = Net.SubnetKey(external.Address);
+                foreach (Session s in _sessions.Values)
+                {
+                    if (IsExpired(s, now))
+                    {
+                        continue;
+                    }
+
+                    if (!s.Confirmed)
+                    {
+                        pending++;
+                    }
+
+                    if (s.External.Address.Equals(external.Address))
+                    {
+                        sameAddress++;
+                    }
+
+                    if (Net.SubnetKey(s.External.Address) == subnet)
+                    {
+                        sameSubnet++;
+                    }
+                }
+
+                if (pending >= _config.MaxPendingSessions || sameAddress >= _config.MaxSessionsPerIp ||
+                    sameSubnet >= _config.MaxSessionsPerSubnet)
                 {
                     return RegisterResult.Full;
                 }
 
-                session = new Session { Token = token!, External = external, Created = now };
+                session = new Session { Token = token!, External = external, Created = now, SecretHash = secretHash };
                 _sessions[token!] = session;
                 result = RegisterResult.Added;
             }
@@ -143,7 +325,36 @@ public sealed partial class SessionRegistry
     }
 
     /// <summary>
-    ///     Stores a host's SessionDetails. Only for a live session, from the address that registered it.
+    ///     A host without a secret whose router gave it a new port: switch once the new port was seen
+    ///     <see cref="PortMoveHits" /> times over at least <see cref="PortMoveAfter" /> with no keep-alive from the
+    ///     old port in between (that resets it). A single spoofed packet can't re-point a session that way, as the
+    ///     real host keeps refreshing from the old port every 10 s.
+    /// </summary>
+    private static bool MovePort(Session session, IPEndPoint external, DateTime now)
+    {
+        if (session.PendingPort != external.Port)
+        {
+            session.PendingPort = external.Port;
+            session.PendingPortHits = 1;
+            session.PendingPortSince = now;
+            return false;
+        }
+
+        session.PendingPortHits++;
+        if (session.PendingPortHits < PortMoveHits || now - session.PendingPortSince < PortMoveAfter)
+        {
+            return false;
+        }
+
+        session.External = external;
+        session.PendingPort = 0;
+        session.PendingPortHits = 0;
+        return true;
+    }
+
+    /// <summary>
+    ///     Stores a host's SessionDetails. Only for a live session, from exactly the address and port it
+    ///     registered from (the mod sends both from its game socket).
     /// </summary>
     public bool UpdateDetails(IPEndPoint external, Protocol.SessionDetailsMessage details)
     {
@@ -156,7 +367,7 @@ public sealed partial class SessionRegistry
         lock (_lock)
         {
             if (!_sessions.TryGetValue(details.Token!, out Session? session) || IsExpired(session, now) ||
-                !session.External.Address.Equals(external.Address))
+                !session.External.Equals(external))
             {
                 return false;
             }
@@ -196,50 +407,130 @@ public sealed partial class SessionRegistry
         }
     }
 
-    public bool Unregister(IPEndPoint external, string? token)
+    /// <summary>
+    ///     Closes a session: with its secret if it has one, otherwise only from exactly its address and port.
+    /// </summary>
+    public bool Unregister(IPEndPoint external, string? token, string? secret)
     {
         if (!IsValidToken(token))
         {
             return false;
         }
 
+        byte[]? secretHash = IsValidSecret(secret) ? HashSecret(secret!) : null;
+        DateTime now = DateTime.UtcNow;
         lock (_lock)
         {
-            if (_sessions.TryGetValue(token!, out Session? session) && session.External.Address.Equals(external.Address))
+            if (!_sessions.TryGetValue(token!, out Session? session))
             {
-                return _sessions.Remove(token!);
+                return false;
             }
 
-            return false;
+            bool owner = session.SecretHash != null
+                ? SecretMatches(session.SecretHash, secretHash)
+                : session.External.Equals(external);
+            if (!owner)
+            {
+                return false;
+            }
+
+            Remove(session, now, true);
+            return true;
         }
     }
 
-    /// <summary>The host's endpoints for a NAT introduction, or null.</summary>
-    public (IPEndPoint External, IPEndPoint? Internal, string Token)? FindByToken(string token)
+    /// <summary>
+    ///     The host for a NAT introduction, by token or by its exact public address and port, counting toward the
+    ///     session's limit of introductions per minute.
+    /// </summary>
+    public IntroduceResult Introduce(string? token, IPEndPoint? exactExternal, out HostEndpoints? host)
     {
+        host = null;
+        DateTime now = DateTime.UtcNow;
         lock (_lock)
         {
-            if (_sessions.TryGetValue(token, out Session? s) && !IsExpired(s, DateTime.UtcNow))
+            Session? session = null;
+            if (token != null)
             {
-                return (s.External, s.Internal, s.Token);
+                _sessions.TryGetValue(token, out session);
+            }
+            else if (exactExternal != null)
+            {
+                session = _sessions.Values
+                    .Where(s => s.External.Equals(exactExternal))
+                    .MaxBy(s => s.LastSeen);
             }
 
-            return null;
+            if (session == null || IsExpired(session, now))
+            {
+                return IntroduceResult.Unknown;
+            }
+
+            if (now - session.IntroWindow > IntroWindowLength)
+            {
+                session.IntroWindow = now;
+                session.IntroCount = 0;
+            }
+
+            if (session.IntroCount >= _config.IntrosPerSession)
+            {
+                return IntroduceResult.SessionLimited;
+            }
+
+            session.IntroCount++;
+            host = new HostEndpoints(session.External, session.Internal, session.Token);
+            return IntroduceResult.Ok;
         }
     }
 
-    /// <summary>For "ip:" introductions: the host at that public address (and port, if given).</summary>
-    public (IPEndPoint External, IPEndPoint? Internal, string Token)? FindByAddress(IPEndPoint target)
+    /// <summary>Whether the host at exactly <paramref name="requester" /> may have its port checked now.</summary>
+    public PortCheckStatus GetPortCheckStatus(IPEndPoint requester)
     {
         DateTime now = DateTime.UtcNow;
         lock (_lock)
         {
-            Session? match = _sessions.Values
-                .Where(s => !IsExpired(s, now) && s.External.Address.Equals(target.Address))
-                .Where(s => target.Port == 0 || s.External.Port == target.Port || s.Internal?.Port == target.Port)
-                .OrderByDescending(s => s.LastSeen)
-                .FirstOrDefault();
-            return match == null ? null : (match.External, match.Internal, match.Token);
+            PortCheckStatus best = PortCheckStatus.NoSession;
+            foreach (Session s in _sessions.Values)
+            {
+                if (IsExpired(s, now) || !s.External.Equals(requester))
+                {
+                    continue;
+                }
+
+                PortCheckStatus status = !s.Confirmed ? PortCheckStatus.NotConfirmed
+                    : s.PortChecks >= MaxPortChecksPerSession ? PortCheckStatus.Exhausted
+                    : PortCheckStatus.Ready;
+                if (status == PortCheckStatus.Ready)
+                {
+                    return status;
+                }
+
+                if (best == PortCheckStatus.NoSession || status == PortCheckStatus.NotConfirmed)
+                {
+                    best = status;
+                }
+            }
+
+            return best;
+        }
+    }
+
+    /// <summary>Counts a port check against a confirmed session at exactly <paramref name="requester" />.</summary>
+    public bool TakePortCheck(IPEndPoint requester)
+    {
+        DateTime now = DateTime.UtcNow;
+        lock (_lock)
+        {
+            Session? session = _sessions.Values.FirstOrDefault(s =>
+                !IsExpired(s, now) && s.External.Equals(requester) && s.Confirmed &&
+                s.PortChecks < MaxPortChecksPerSession);
+            if (session == null)
+            {
+                return false;
+            }
+
+            session.PortChecks++;
+            return true;
         }
     }
 
@@ -248,13 +539,48 @@ public sealed partial class SessionRegistry
         DateTime now = DateTime.UtcNow;
         lock (_lock)
         {
-            List<string> expired = _sessions.Values.Where(s => IsExpired(s, now)).Select(s => s.Token).ToList();
-            foreach (string token in expired)
+            List<Session> expired = _sessions.Values.Where(s => IsExpired(s, now)).ToList();
+            foreach (Session session in expired)
             {
-                _sessions.Remove(token);
+                Remove(session, now);
+            }
+
+            while (_tombstoneOrder.TryPeek(out Tombstone? oldest) && oldest.Expires <= now)
+            {
+                _tombstoneOrder.Dequeue();
+                if (_tombstones.TryGetValue(oldest.Token, out Tombstone? current) && ReferenceEquals(current, oldest))
+                {
+                    _tombstones.Remove(oldest.Token);
+                }
             }
 
             return expired.Count;
+        }
+    }
+
+    /// <summary>
+    ///     Drops a session and remembers its owner, for confirmed sessions and for ones the host closed, so the
+    ///     token can't be taken over right after. Caller holds the lock.
+    /// </summary>
+    private void Remove(Session session, DateTime now, bool closedByHost = false)
+    {
+        _sessions.Remove(session.Token);
+        if (_config.TombstoneTtl <= TimeSpan.Zero || !(session.Confirmed || closedByHost))
+        {
+            return;
+        }
+
+        var tomb = new Tombstone(session.Token, session.SecretHash, session.External.Address,
+            now + _config.TombstoneTtl);
+        _tombstones[session.Token] = tomb;
+        _tombstoneOrder.Enqueue(tomb);
+        while (_tombstoneOrder.Count > MaxTombstones)
+        {
+            Tombstone oldest = _tombstoneOrder.Dequeue();
+            if (_tombstones.TryGetValue(oldest.Token, out Tombstone? current) && ReferenceEquals(current, oldest))
+            {
+                _tombstones.Remove(oldest.Token);
+            }
         }
     }
 
@@ -278,14 +604,16 @@ public sealed partial class SessionRegistry
         return now - session.LastSeen > _config.SessionTtl;
     }
 
+    /// <summary>The host's LAN endpoint: only a private IPv4 address (see <see cref="Net.IsLan" />).</summary>
     private static IPEndPoint? ParseInternal(string? localIp, int localPort)
     {
-        if (localPort is <= 0 or > 65535 || !IPAddress.TryParse(localIp, out IPAddress? address))
+        if (localPort is <= 0 or > 65535 || !IPAddress.TryParse(localIp, out IPAddress? address) ||
+            !Net.IsLan(address))
         {
             return null;
         }
 
-        return new IPEndPoint(address, localPort);
+        return new IPEndPoint(address.MapToIPv4(), localPort);
     }
 
     [GeneratedRegex("^#[0-9A-Fa-f]{6}$")]
@@ -296,8 +624,12 @@ public sealed partial class SessionRegistry
         return color != null && ColorPattern().IsMatch(color) ? color.ToUpperInvariant() : null;
     }
 
-    /// <summary>Trims, drops control characters and caps the length of a name shown to other players.</summary>
-    private static string? Clean(string? value, int maxLength)
+    /// <summary>
+    ///     Trims and caps the length of a name shown to other players. Drops control and format characters
+    ///     (bidi overrides, zero-width), line and paragraph separators, private use and unpaired surrogates, and
+    ///     stacks of more than two combining marks.
+    /// </summary>
+    public static string? Clean(string? value, int maxLength)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -305,19 +637,56 @@ public sealed partial class SessionRegistry
         }
 
         var builder = new StringBuilder(Math.Min(value.Length, maxLength));
-        foreach (char c in value.Trim())
+        int marks = 0;
+        for (int i = 0; i < value.Length && builder.Length < maxLength; i++)
         {
-            if (!char.IsControl(c))
+            char c = value[i];
+            if (char.IsHighSurrogate(c))
             {
-                builder.Append(c);
+                if (i + 1 < value.Length && char.IsLowSurrogate(value[i + 1]))
+                {
+                    UnicodeCategory pair = CharUnicodeInfo.GetUnicodeCategory(value, i);
+                    if (pair is not (UnicodeCategory.Format or UnicodeCategory.PrivateUse) &&
+                        builder.Length + 2 <= maxLength)
+                    {
+                        builder.Append(c).Append(value[i + 1]);
+                        marks = 0;
+                    }
+
+                    i++;
+                }
+
+                continue;
             }
 
-            if (builder.Length >= maxLength)
+            UnicodeCategory category = CharUnicodeInfo.GetUnicodeCategory(c);
+            switch (category)
             {
-                break;
+                case UnicodeCategory.Control:
+                case UnicodeCategory.Format:
+                case UnicodeCategory.LineSeparator:
+                case UnicodeCategory.ParagraphSeparator:
+                case UnicodeCategory.PrivateUse:
+                case UnicodeCategory.Surrogate:
+                case UnicodeCategory.OtherNotAssigned:
+                    continue;
+                case UnicodeCategory.NonSpacingMark:
+                case UnicodeCategory.EnclosingMark:
+                    if (++marks > 2 || builder.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    break;
+                default:
+                    marks = 0;
+                    break;
             }
+
+            builder.Append(c);
         }
 
-        return builder.Length == 0 ? null : builder.ToString();
+        string result = builder.ToString().Trim();
+        return result.Length == 0 ? null : result;
     }
 }
