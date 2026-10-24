@@ -1,19 +1,11 @@
-using CS2M.API.Commands;
 using CS2M.BaseGame.Commands;
 using CS2M.BaseGame.Systems;
 
 namespace CS2M.BaseGame.Injections
 {
-    public class CursorHandler : CommandHandler<CursorCommand>
+    // names and positions are cleaned in CursorSystem.OnRemoteCursor
+    public class CursorHandler : GuardedHandler<CursorCommand>
     {
-        public CursorHandler()
-        {
-            TransactionCmd = false;
-        }
-
-        protected override void Handle(CursorCommand command)
-        {
-            CursorSystem.OnRemoteCursor(command);
-        }
+        protected override void Apply(CursorCommand command) => CursorSystem.OnRemoteCursor(command);
     }
 }

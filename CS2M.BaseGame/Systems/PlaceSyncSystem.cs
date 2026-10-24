@@ -267,7 +267,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class PlaceApplySystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<PlaceCommand> Pending = new ConcurrentQueue<PlaceCommand>();
+        public static readonly InboundQueue<PlaceCommand> Pending = new InboundQueue<PlaceCommand>("PlaceApplySystem", 1024, 16);
         private PrefabSystem _prefabSystem;
 
         protected override void OnCreate()

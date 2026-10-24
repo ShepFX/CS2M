@@ -246,7 +246,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class NetDiffApplySystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<NetDiffCommand> Pending = new ConcurrentQueue<NetDiffCommand>();
+        public static readonly InboundQueue<NetDiffCommand> Pending = new InboundQueue<NetDiffCommand>("NetDiffApplySystem", 1024, 8);
 
         private PrefabSystem _prefabSystem;
         private EntityArchetype _archetype;

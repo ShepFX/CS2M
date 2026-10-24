@@ -1,12 +1,11 @@
-using CS2M.API.Commands;
 using CS2M.BaseGame.Commands;
 using CS2M.BaseGame.Systems;
 
 namespace CS2M.BaseGame.Injections
 {
-    public class ColorHandler : CommandHandler<ColorCommand>
+    public class ColorHandler : GuardedHandler<ColorCommand>
     {
-        public ColorHandler() { TransactionCmd = false; }
-        protected override void Handle(ColorCommand command) => ColorSyncSystem.Pending.Enqueue(command);
+        protected override bool Validate(ColorCommand command) => CommandValidation.Validate(command);
+        protected override void Apply(ColorCommand command) => ColorSyncSystem.Pending.Enqueue(command);
     }
 }

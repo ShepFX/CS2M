@@ -151,7 +151,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class TerrainBrushApplySystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<TerrainBrushCommand> Pending = new ConcurrentQueue<TerrainBrushCommand>();
+        public static readonly InboundQueue<TerrainBrushCommand> Pending = new InboundQueue<TerrainBrushCommand>("TerrainBrushApplySystem", 512, 16);
 
         // TerrainSystem.ApplyToTerrain's small-strength curve and delta clamp
         private const float SmallStrength = 0.002f;

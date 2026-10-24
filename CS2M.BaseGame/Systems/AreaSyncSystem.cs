@@ -266,7 +266,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class AreaApplySystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<AreaChangeCommand> Pending = new ConcurrentQueue<AreaChangeCommand>();
+        public static readonly InboundQueue<AreaChangeCommand> Pending = new InboundQueue<AreaChangeCommand>("AreaApplySystem", 1024, 16);
 
         // areas this system tagged Deleted/Updated, skipped (and cleared) by the next AreaCaptureSystem run
         public static readonly HashSet<Entity> Received = new HashSet<Entity>();

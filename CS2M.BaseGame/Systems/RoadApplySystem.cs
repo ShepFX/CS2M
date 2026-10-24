@@ -18,7 +18,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class RoadApplySystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<RoadCommand> Pending = new ConcurrentQueue<RoadCommand>();
+        public static readonly InboundQueue<RoadCommand> Pending = new InboundQueue<RoadCommand>("RoadApplySystem", 1024, 16);
 
         private PrefabSystem _prefabSystem;
         private EntityArchetype _definitionArchetype;

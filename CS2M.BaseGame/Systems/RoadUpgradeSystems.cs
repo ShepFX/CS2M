@@ -274,7 +274,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class RoadUpgradeApplySystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<RoadUpgradeCommand> Pending = new ConcurrentQueue<RoadUpgradeCommand>();
+        public static readonly InboundQueue<RoadUpgradeCommand> Pending = new InboundQueue<RoadUpgradeCommand>("RoadUpgradeApplySystem", 1024, 8);
 
         private const float RetrySeconds = 5f;
 

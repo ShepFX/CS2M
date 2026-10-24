@@ -16,7 +16,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class ZoneApplySystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<ZoneCellsCommand> Pending = new ConcurrentQueue<ZoneCellsCommand>();
+        public static readonly InboundQueue<ZoneCellsCommand> Pending = new InboundQueue<ZoneCellsCommand>("ZoneApplySystem", 4096, 64);
 
         private EntityQuery _blocks;
 

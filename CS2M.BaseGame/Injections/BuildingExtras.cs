@@ -1,18 +1,17 @@
-using CS2M.API.Commands;
 using CS2M.BaseGame.Commands;
 using CS2M.BaseGame.Systems;
 
 namespace CS2M.BaseGame.Injections
 {
-    public class BuildingPolicyHandler : CommandHandler<BuildingPolicyCommand>
+    public class BuildingPolicyHandler : GuardedHandler<BuildingPolicyCommand>
     {
-        public BuildingPolicyHandler() { TransactionCmd = false; }
-        protected override void Handle(BuildingPolicyCommand command) => BuildingSettingsSyncSystem.Pending.Enqueue(command);
+        protected override bool Validate(BuildingPolicyCommand command) => CommandValidation.Validate(command);
+        protected override void Apply(BuildingPolicyCommand command) => BuildingSettingsSyncSystem.Pending.Enqueue(command);
     }
 
-    public class RenameHandler : CommandHandler<RenameCommand>
+    public class RenameHandler : GuardedHandler<RenameCommand>
     {
-        public RenameHandler() { TransactionCmd = false; }
-        protected override void Handle(RenameCommand command) => NameSyncSystem.Pending.Enqueue(command);
+        protected override bool Validate(RenameCommand command) => CommandValidation.Validate(command);
+        protected override void Apply(RenameCommand command) => NameSyncSystem.Pending.Enqueue(command);
     }
 }

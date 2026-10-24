@@ -11,7 +11,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class SpeedSyncSystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<SpeedCommand> Pending = new ConcurrentQueue<SpeedCommand>();
+        public static readonly InboundQueue<SpeedCommand> Pending = new InboundQueue<SpeedCommand>("SpeedSyncSystem", 64, 16);
 
         private const float HostRepeat = 5f;
 

@@ -24,7 +24,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class TransitLineApplySystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<CommandBase> Pending = new ConcurrentQueue<CommandBase>();
+        public static readonly InboundQueue<CommandBase> Pending = new InboundQueue<CommandBase>("TransitLineApplySystem", 1024, 32);
 
         // a stop placed just before the line may still be under construction here
         private const float ConnectionWait = 5f;

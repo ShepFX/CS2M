@@ -18,7 +18,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class DistrictNameSyncSystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<DistrictNamesCommand> Pending = new ConcurrentQueue<DistrictNamesCommand>();
+        public static readonly InboundQueue<DistrictNamesCommand> Pending = new InboundQueue<DistrictNamesCommand>("DistrictNameSyncSystem", 64, 4);
 
         private const float CheckInterval = 2f;
 
@@ -51,11 +51,21 @@ namespace CS2M.BaseGame.Systems
             {
                 while (Pending.TryDequeue(out DistrictNamesCommand command))
                 {
-                    Apply(command);
+                    try
+                    {
+                        Apply(command);
+                    }
+                    catch (System.Exception e)
+                    {
+                        Inbound.Failed(nameof(DistrictNameSyncSystem), e);
+                    }
                 }
 
                 return;
             }
+
+            // only the host sends district names; anything that reached the queue here is thrown away
+            Pending.Clear();
 
             float now = UnityEngine.Time.realtimeSinceStartup;
             if (now - _lastCheck < CheckInterval)
@@ -98,12 +108,22 @@ namespace CS2M.BaseGame.Systems
         private void Apply(DistrictNamesCommand command)
         {
             int applied = 0;
+            if (command.Districts == null || command.Indices == null)
+            {
+                return;
+            }
+
             for (int i = 0; i < command.Districts.Length && i < command.Indices.Length; i++)
             {
+                if (command.Districts[i] == null)
+                {
+                    continue;
+                }
+
                 Entity district = AreaRefs.Resolve(EntityManager, _prefabSystem, command.Districts[i]);
                 if (district == Entity.Null || !EntityManager.HasBuffer<RandomLocalizationIndex>(district))
                 {
-                    BaseGameLog.Warn("District name received for a district that isn't here (or has no name index)");
+                    Inbound.Warn("district-missing", "District name received for a district that isn't here (or has no name index)");
                     continue;
                 }
 

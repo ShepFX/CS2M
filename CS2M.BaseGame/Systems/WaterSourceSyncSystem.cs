@@ -135,7 +135,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class WaterSourceApplySystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<WaterSourceCommand> Pending = new ConcurrentQueue<WaterSourceCommand>();
+        public static readonly InboundQueue<WaterSourceCommand> Pending = new InboundQueue<WaterSourceCommand>("WaterSourceApplySystem", 256, 16);
 
         // Sources are found by their horizontal position; the water simulation may adjust the height
         private const float MatchDistanceSq = 1f;

@@ -23,7 +23,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class PolicySyncSystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<PolicyCommand> Pending = new ConcurrentQueue<PolicyCommand>();
+        public static readonly InboundQueue<PolicyCommand> Pending = new InboundQueue<PolicyCommand>("PolicySyncSystem", 2048, 64);
 
         private const float CheckInterval = 0.5f;
 

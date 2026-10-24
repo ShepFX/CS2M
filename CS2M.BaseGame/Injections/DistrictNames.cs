@@ -1,12 +1,12 @@
-using CS2M.API.Commands;
 using CS2M.BaseGame.Commands;
 using CS2M.BaseGame.Systems;
 
 namespace CS2M.BaseGame.Injections
 {
-    public class DistrictNamesHandler : CommandHandler<DistrictNamesCommand>
+    // host to joiners only
+    public class DistrictNamesHandler : GuardedHandler<DistrictNamesCommand>
     {
-        public DistrictNamesHandler() { TransactionCmd = false; }
-        protected override void Handle(DistrictNamesCommand command) => DistrictNameSyncSystem.Pending.Enqueue(command);
+        protected override bool Validate(DistrictNamesCommand command) => CommandValidation.Validate(command);
+        protected override void Apply(DistrictNamesCommand command) => DistrictNameSyncSystem.Pending.Enqueue(command);
     }
 }

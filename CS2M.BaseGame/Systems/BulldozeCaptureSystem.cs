@@ -85,8 +85,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class BulldozeApplySystem : GameSystemBase
     {
-        public static readonly System.Collections.Concurrent.ConcurrentQueue<BulldozeCommand> Pending =
-            new System.Collections.Concurrent.ConcurrentQueue<BulldozeCommand>();
+        public static readonly InboundQueue<BulldozeCommand> Pending = new InboundQueue<BulldozeCommand>("BulldozeApplySystem", 1024, 8);
 
         private PrefabSystem _prefabSystem;
 

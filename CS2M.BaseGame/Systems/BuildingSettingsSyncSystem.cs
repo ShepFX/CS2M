@@ -27,7 +27,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class BuildingSettingsSyncSystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<BuildingPolicyCommand> Pending = new ConcurrentQueue<BuildingPolicyCommand>();
+        public static readonly InboundQueue<BuildingPolicyCommand> Pending = new InboundQueue<BuildingPolicyCommand>("BuildingSettingsSyncSystem", 2048, 64);
 
         private PrefabSystem _prefabSystem;
         private ToolSystem _toolSystem;
