@@ -5,6 +5,7 @@ import {useEffect, useState} from "react";
 import {setVal} from "api";
 import mod from "../../mod.json";
 import styles from "./hud.module.scss";
+import {ResyncButton, ResyncStatus} from "./resync";
 
 interface Player {
     n: string;   // name
@@ -49,7 +50,7 @@ export const MultiplayerHud = () => {
     const unread = Math.max(0, messages.length - seen);
 
     if (players.length === 0) {
-        return null;
+        return <ResyncStatus/>;
     }
 
     const colourOf = (user: string) => players.find(p => p.n.replace(" (host)", "") === user)?.c;
@@ -69,6 +70,7 @@ export const MultiplayerHud = () => {
         <div className={styles.hud}>
             <div className={styles.header}>
                 <span className={styles.title}>Multiplayer · {players.length} player{players.length === 1 ? "" : "s"}</span>
+                <ResyncButton host={players.some(p => p.me && p.n.endsWith(" (host)"))}/>
                 <button className={styles.hide} onClick={() => setVal("SetHudCollapsed", true)}>–</button>
             </div>
             <div className={styles.players}>

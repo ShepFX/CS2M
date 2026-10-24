@@ -70,6 +70,7 @@ namespace CS2M.UI
             AddBinding(new TriggerBinding(Mod.Name, "JoinGame", JoinGame));
             AddBinding(new TriggerBinding(Mod.Name, "HostGame", HostGame));
             AddBinding(new TriggerBinding(Mod.Name, "StopServer", StopServer));
+            AddBinding(new TriggerBinding(Mod.Name, "Resync", () => NetworkInterface.Instance.Resync()));
 
             AddBinding(_joinMenuVisible = new ValueBinding<bool>(Mod.Name, "JoinMenuVisible", false));
             AddBinding(_hostMenuVisible = new ValueBinding<bool>(Mod.Name, "HostMenuVisible", false));

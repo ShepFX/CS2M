@@ -1,7 +1,9 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using Colossal;
+using CS2M.API;
 using CS2M.API.Commands;
 using CS2M.API.Networking;
 using CS2M.Commands;
@@ -44,6 +46,13 @@ namespace CS2M.Networking
         }
 
         public static NetworkInterface Instance => _instance ??= new NetworkInterface();
+
+        private const double ResyncCooldown = 15;
+
+        // players waiting for the city; see SendWorld
+        private readonly List<RemotePlayer> _worldQueue = new();
+        private bool _sendingWorld;
+        private readonly Stopwatch _lastResyncRequest = new();
 
         /// <summary>
         ///     Event is triggered, when a player is connected on the network level
@@ -152,39 +161,145 @@ namespace CS2M.Networking
             PlayerListConnected.Add(player);
             PlayerConnectedEvent?.Invoke(player);
 
-            // Get max packet size from MTU discovery
-            int maxPacketSize = player.NetPeer.GetMaxSinglePacketSize(DeliveryMethod.ReliableOrdered);
-            maxPacketSize -= 25; // Maximum packet overhead as computed and tested in `PacketSizeOverhead` unit test
+            SendWorld(new List<RemotePlayer> { player });
+        }
 
-            // Send world
-            TaskManager.instance.EnqueueTask("LoadMap", async () =>
+        /// <summary>
+        ///     The "Resync" button. The host sends its current city to every connected player again; a joiner
+        ///     asks the host for it. Either way the joiner reloads the city through the normal join transfer.
+        /// </summary>
+        public void Resync()
+        {
+            if (LocalPlayer.PlayerStatus != PlayerStatus.PLAYING)
             {
-                SaveLoadHelper saveLoadHelper =
-                    World.DefaultGameObjectInjectionWorld.GetOrCreateSystemManaged<SaveLoadHelper>();
-                SlicedPacketStream stream = await saveLoadHelper.SaveGame(maxPacketSize);
-                int remainingBytes = (int)stream.Length;
-                bool newTransfer = true;
+                return;
+            }
 
-                var watch = new Stopwatch();
-                watch.Start();
-
-                Log.Debug($"Sending world with size of {stream.Length} bytes. Slice size: {maxPacketSize}");
-                foreach (byte[] slice in stream.GetSlices())
+            if (LocalPlayer.PlayerType == PlayerType.SERVER)
+            {
+                List<RemotePlayer> players = PlayerListConnected.OfType<RemotePlayer>().Where(IsConnected).ToList();
+                if (players.Count == 0)
                 {
-                    remainingBytes -= slice.Length;
-                    var cmd = new WorldTransferCommand
-                    {
-                        WorldSlice = slice,
-                        RemainingBytes = remainingBytes,
-                        NewTransfer = newTransfer,
-                    };
-
-                    CommandInternal.Instance.SendToClient(player, cmd);
-
-                    newTransfer = false;
+                    Chat.Instance?.PrintGameMessage("Resync: nobody else is connected.");
+                    return;
                 }
 
-                Log.Debug($"[SaveGame] Save game packaging took {watch.ElapsedMilliseconds}ms");
+                Log.Info($"Resync: sending the city to {players.Count} player(s) again");
+                Chat.Instance?.PrintGameMessage("Resync: sending the city to everyone again.");
+                SendWorld(players);
+            }
+            else if (LocalPlayer.PlayerType == PlayerType.CLIENT)
+            {
+                // the host saves the whole city for every request; don't let a double click do it twice
+                if (_lastResyncRequest.IsRunning && _lastResyncRequest.Elapsed.TotalSeconds < ResyncCooldown)
+                {
+                    return;
+                }
+
+                _lastResyncRequest.Restart();
+                Log.Info("Resync: asking the host for its city");
+                Chat.Instance?.PrintGameMessage("Resync: asked the host for a fresh copy of the city.");
+                SendToServer(new ResyncRequestCommand { Username = LocalPlayer.Username });
+            }
+        }
+
+        /// <summary>
+        ///     Host: a joiner asked for the city again.
+        /// </summary>
+        public void ResendWorld(string username)
+        {
+            RemotePlayer player = PlayerListConnected.OfType<RemotePlayer>()
+                .FirstOrDefault(p => p.Username == username && IsConnected(p));
+            if (player == null)
+            {
+                Log.Warn($"Resync requested by '{username}', who isn't connected");
+                return;
+            }
+
+            Log.Info($"Resync: '{username}' asked for the city again");
+            Chat.Instance?.PrintGameMessage($"Resync: sending the city to {username} again.");
+            SendWorld(new List<RemotePlayer> { player });
+        }
+
+        private static bool IsConnected(RemotePlayer player) =>
+            player.NetPeer != null && player.NetPeer.ConnectionState == ConnectionState.Connected;
+
+        /// <summary>
+        ///     Saves the city once and sends it to the given players. Requests that arrive while a save is
+        ///     running wait for it to finish and are sent together afterwards, so two saves never overlap.
+        /// </summary>
+        private void SendWorld(List<RemotePlayer> players)
+        {
+            foreach (RemotePlayer player in players)
+            {
+                if (!_worldQueue.Contains(player))
+                {
+                    _worldQueue.Add(player);
+                }
+            }
+
+            if (_sendingWorld)
+            {
+                return;
+            }
+
+            _sendingWorld = true;
+            TaskManager.instance.EnqueueTask("LoadMap", async () =>
+            {
+                try
+                {
+                    while (_worldQueue.Count > 0)
+                    {
+                        List<RemotePlayer> batch = _worldQueue.Where(IsConnected).ToList();
+                        _worldQueue.Clear();
+                        if (batch.Count == 0)
+                        {
+                            break;
+                        }
+
+                        // Get max packet size from MTU discovery (the smallest, as every player gets the same slices)
+                        int maxPacketSize = batch.Min(p => p.NetPeer.GetMaxSinglePacketSize(DeliveryMethod.ReliableOrdered));
+                        maxPacketSize -= 25; // Maximum packet overhead as computed and tested in `PacketSizeOverhead` unit test
+
+                        SaveLoadHelper saveLoadHelper =
+                            World.DefaultGameObjectInjectionWorld.GetOrCreateSystemManaged<SaveLoadHelper>();
+                        SlicedPacketStream stream = await saveLoadHelper.SaveGame(maxPacketSize);
+
+                        var watch = new Stopwatch();
+                        watch.Start();
+
+                        Log.Debug($"Sending world with size of {stream.Length} bytes to {batch.Count} player(s). Slice size: {maxPacketSize}");
+                        foreach (RemotePlayer player in batch)
+                        {
+                            int remainingBytes = (int)stream.Length;
+                            bool newTransfer = true;
+                            foreach (byte[] slice in stream.GetSlices())
+                            {
+                                remainingBytes -= slice.Length;
+                                var cmd = new WorldTransferCommand
+                                {
+                                    WorldSlice = slice,
+                                    RemainingBytes = remainingBytes,
+                                    NewTransfer = newTransfer,
+                                };
+
+                                CommandInternal.Instance.SendToClient(player, cmd);
+
+                                newTransfer = false;
+                            }
+                        }
+
+                        Log.Debug($"[SaveGame] Save game packaging took {watch.ElapsedMilliseconds}ms");
+                    }
+                }
+                catch (Exception e)
+                {
+                    Log.Error("Sending the world failed", e);
+                }
+                finally
+                {
+                    _sendingWorld = false;
+                }
             });
         }
     }
