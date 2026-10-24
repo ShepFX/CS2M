@@ -18,6 +18,9 @@ namespace CS2M.Commands.ApiServer
 
         private MessagePackSerializerOptions _model;
 
+        // Replies come over UDP from an address anyone can spoof: read them as untrusted data
+        private MessagePackSerializerOptions _untrustedModel;
+
         /// <summary>
         ///     The order the commands are registered in, which gives each its type key on the wire (0, 1, 2...).
         ///     The lobby server (CS2M.Lobby/Protocol.cs) uses the same keys, so only ever add new commands at the end.
@@ -67,7 +70,7 @@ namespace CS2M.Commands.ApiServer
         /// </summary>
         public ApiCommandBase Deserialize(byte[] message)
         {
-            return MessagePackSerializer.Deserialize<ApiCommandBase>(message, _model);
+            return MessagePackSerializer.Deserialize<ApiCommandBase>(message, _untrustedModel);
         }
 
         public void RefreshModel()
@@ -108,6 +111,7 @@ namespace CS2M.Commands.ApiServer
                 }
 
                 _model = options.Build();
+                _untrustedModel = _model.WithSecurity(MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(16));
             }
             catch (Exception ex)
             {
