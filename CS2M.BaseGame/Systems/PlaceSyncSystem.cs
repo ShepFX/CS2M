@@ -247,8 +247,8 @@ namespace CS2M.BaseGame.Systems
             }
 
             DefinitionData main = definitions.Find(d => d.Object != null && !d.HasOwnerDefinition) ?? definitions[0];
-            // every prefab is in the key: upgrades placed one after another share the same main (owner) definition
-            string key = string.Join("|", definitions.ConvertAll(d => d.Prefab)) + string.Join(",", main.Object?.Position ?? new float[0]);
+            // every prefab and position is in the key: upgrades placed one after another share the same main (owner) definition
+            string key = string.Join("|", definitions.ConvertAll(d => d.Prefab + string.Join(",", d.Object?.Position ?? new float[0])));
             float now = UnityEngine.Time.realtimeSinceStartup;
             if (key == _lastKey && now - _lastTime < 0.5f)
             {

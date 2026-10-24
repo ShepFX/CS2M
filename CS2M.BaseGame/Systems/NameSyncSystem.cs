@@ -129,6 +129,13 @@ namespace CS2M.BaseGame.Systems
                 street = true;
             }
 
+            // vehicles and creatures move, so a position can't find them on the other game
+            if (EntityManager.HasComponent<Game.Vehicles.Vehicle>(described) ||
+                EntityManager.HasComponent<Game.Creatures.Creature>(described))
+            {
+                return;
+            }
+
             NetRef target = NetRefs.Describe(EntityManager, described, _prefabSystem);
             if (target.Kind == 0)
             {

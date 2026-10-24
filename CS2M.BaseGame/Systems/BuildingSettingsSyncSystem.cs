@@ -125,6 +125,15 @@ namespace CS2M.BaseGame.Systems
                         continue;
                     }
 
+                    // the panel can't delete growables, so one deleted here was removed by the simulation
+                    // (which is the host's call), not by this player
+                    Entity prefab = EntityManager.GetComponentData<PrefabRef>(entity).m_Prefab;
+                    if (EntityManager.HasComponent<SpawnableBuildingData>(prefab) &&
+                        !EntityManager.HasComponent<SignatureBuildingData>(prefab))
+                    {
+                        continue;
+                    }
+
                     NetRef target = NetRefs.Describe(EntityManager, entity, _prefabSystem);
                     if (target.Kind == 3)
                     {
