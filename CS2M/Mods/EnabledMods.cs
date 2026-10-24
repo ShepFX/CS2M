@@ -151,7 +151,7 @@ namespace CS2M.Mods
                         string id = string.IsNullOrEmpty(meta.platformID)
                             ? LocalPrefix + info.asset.name
                             : meta.platformID;
-                        if (!ids.Add(id))
+                        if (IsCs2mDependency(id) || !ids.Add(id))
                         {
                             continue;
                         }
@@ -175,7 +175,7 @@ namespace CS2M.Mods
 
             foreach (Colossal.PSI.Common.Mod pdx in playset)
             {
-                if (string.IsNullOrEmpty(pdx.id) || pdx.id == ownPlatformId)
+                if (string.IsNullOrEmpty(pdx.id) || pdx.id == ownPlatformId || IsCs2mDependency(pdx.id))
                 {
                     continue;
                 }
@@ -200,6 +200,12 @@ namespace CS2M.Mods
                 .ThenBy(mod => mod.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
+
+        /// <summary>
+        ///     Mods every CS2M player has because CS2M needs them (Paradox Mods ids). Listing them would put
+        ///     every session in the Modded tab.
+        /// </summary>
+        public static bool IsCs2mDependency(string platformId) => platformId == "75426"; // I18n Everywhere
 
         /// <summary>
         ///     The list as JSON for the UI: [{"id", "name", "version", "clientSide"}].

@@ -127,7 +127,7 @@ const ModRow = ({check}: { check: ModCheck }) => {
     }
     return (
         <div className={styles.mod}>
-            <span className={styles.modName}>{check.name}{check.version ? " " + check.version : ""}</span>
+            <span className={styles.modName}>{check.name + (check.version ? " " + check.version : "")}</span>
             <span className={styles.modState}>{state}</span>
         </div>
     );
@@ -218,7 +218,7 @@ const SessionDetails = ({session, check}: { session: LobbySession, check: Sessio
                         <span key={i} className={styles.player}>
                             <span className={styles.swatch}
                                   style={{backgroundColor: player.color ?? (i == 0 ? HOST_COLOR : OTHER_COLOR)}}/>
-                            {player.name}{i == 0 ? " " + translate("CS2M.UI.Browser.HostTag") : ""}
+                            {player.name + (i == 0 ? " " + (translate("CS2M.UI.Browser.HostTag") ?? "") : "")}
                         </span>
                     ))}
                 </div>

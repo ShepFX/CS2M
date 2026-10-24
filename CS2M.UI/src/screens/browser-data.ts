@@ -130,6 +130,9 @@ export function checkSession(session: LobbySession, local: LocalVersions, localM
     let different = 0;
 
     for (const mod of session.details?.mods ?? []) {
+        if (isCs2mDependency(mod)) {
+            continue;
+        }
         const name = mod.name || mod.id;
         const version = mod.version ?? "";
         const mine = localMods.find(m => m.id === mod.id) ?? localMods.find(m => sameText(m.name, name));
@@ -171,4 +174,10 @@ export function findLive(entry: RecentEntry, sessions: LobbySession[]): LobbySes
     }
     return sessions.find(s => s.token === entry.token) ??
         sessions.find(s => !!entry.name && s.name === entry.name && s.host === entry.host);
+}
+
+
+// Mods every CS2M player has because CS2M needs them (older hosts still list them): never make a session "modded".
+export function isCs2mDependency(mod: { id?: string, name?: string }): boolean {
+    return mod.id === "75426" || /^i18n ?everywhere$/i.test((mod.name ?? "").trim());
 }
