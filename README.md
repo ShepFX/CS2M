@@ -35,7 +35,10 @@ for UDP, and the hidden `LobbyUrl` (default `https://cs2.shep.rip`) for the HTTP
 - **UDP 4242**: the mod's API messages (LiteNetLib unconnected messages carrying MessagePack) and NAT
   introductions. Must be reachable directly, not through an HTTP proxy.
 - **TCP 8080**: plain HTTP JSON API, meant to sit behind a TLS reverse proxy.
-  - `GET /sessions`: live sessions, `[{token, name, host, players, maxPlayers, hasPassword, gameVersion, modVersion, lastSeen}]`.
+  - `GET /sessions`: live sessions, `[{token, name, host, players, maxPlayers, hasPassword, gameVersion, modVersion, lastSeen, details}]`.
+    `details` is null until the host sends a SessionDetails message (older mods never do), otherwise
+    `{population, milestone, year, month, playerList: [{name, color}], mods: [{id, name, version, clientSide}], modCount, updated}`
+    (month 0-11; `modCount` is larger than `mods` when the host cut its list short, required mods come first).
     Never contains IP addresses.
   - `GET /health`: `{status, sessions, uptimeSeconds}`.
 
@@ -68,7 +71,7 @@ mod: `dotnet run --project CS2M.Lobby.SmokeTest -- <lobby host> 4242 8080`.
 A message is a LiteNetLib unconnected message whose payload is what MessagePack.Attributeless writes:
 `int typeKey, int propertyCount, (int propertyKey, value)...`. Type keys come from the registration order in
 `ApiCommand.ProtocolOrder` (PortCheckRequest 0, PortCheckResult 1, ServerRegistration 2, SessionInfo 3,
-ServerUnregister 4); property keys are the command's properties sorted by name. `CS2M.Lobby/Protocol.cs`
+ServerUnregister 4, SessionDetails 5); property keys are the command's properties sorted by name. `CS2M.Lobby/Protocol.cs`
 lists them. New commands go at the end of `ProtocolOrder`, and existing commands must not gain properties
 (that renumbers them); add a new command instead.
 

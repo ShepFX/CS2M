@@ -48,4 +48,21 @@ namespace CS2M.Commands.ApiServer
     {
         public string Token { get; set; }
     }
+
+    public class SessionDetailsCommand : ApiCommandBase
+    {
+        public string Token { get; set; }
+        public int Population { get; set; }
+        public int Milestone { get; set; }
+        public int Year { get; set; }
+        public int Month { get; set; }
+        public string[] PlayerNames { get; set; }
+        public string[] PlayerColors { get; set; }
+        public string[] ModIds { get; set; }
+        public string[] ModNames { get; set; }
+        public string[] ModVersions { get; set; }
+        public bool[] ModClientSide { get; set; }
+        public int ModCount { get; set; }
+        public int ModOffset { get; set; }
+    }
 }

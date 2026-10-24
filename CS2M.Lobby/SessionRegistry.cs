@@ -24,12 +24,27 @@ public sealed class Session
     public string? ModVersion { get; set; }
     public DateTime Created { get; init; }
     public DateTime LastSeen { get; set; }
+
+    /// <summary>From SessionDetailsCommand; null until the host sends one (older mods never do).</summary>
+    public SessionDetailsView? Details { get; set; }
 }
+
+public sealed record PlayerView(string Name, string? Color);
+
+public sealed record ModView(string Id, string? Name, string? Version, bool ClientSide);
+
+/// <summary>
+///     The extra details a host sends. Month is 0-11. ModCount can be larger than Mods when the host's list was cut
+///     short to fit a packet; it lists required mods first.
+/// </summary>
+public sealed record SessionDetailsView(
+    int Population, int Milestone, int Year, int Month, IReadOnlyList<PlayerView> PlayerList,
+    IReadOnlyList<ModView> Mods, int ModCount, DateTime Updated);
 
 /// <summary>Public view of a session for the HTTP API. Has no addresses on purpose.</summary>
 public sealed record SessionView(
     string Token, string? Name, string? Host, int Players, int MaxPlayers, bool HasPassword,
-    string? GameVersion, string? ModVersion, DateTime LastSeen);
+    string? GameVersion, string? ModVersion, DateTime LastSeen, SessionDetailsView? Details);
 
 public enum RegisterResult
 {
@@ -127,6 +142,60 @@ public sealed partial class SessionRegistry
         }
     }
 
+    /// <summary>
+    ///     Stores a host's SessionDetails. Only for a live session, from the address that registered it.
+    /// </summary>
+    public bool UpdateDetails(IPEndPoint external, Protocol.SessionDetailsMessage details)
+    {
+        if (!IsValidToken(details.Token))
+        {
+            return false;
+        }
+
+        DateTime now = DateTime.UtcNow;
+        lock (_lock)
+        {
+            if (!_sessions.TryGetValue(details.Token!, out Session? session) || IsExpired(session, now) ||
+                !session.External.Address.Equals(external.Address))
+            {
+                return false;
+            }
+
+            List<ModView> mods = details.Mods
+                .Select(m => new ModView(Clean(m.Id, 48) ?? "?", Clean(m.Name, 40), Clean(m.Version, 20),
+                    m.ClientSide))
+                .ToList();
+            if (details.ModOffset > 0)
+            {
+                // The rest of a long mod list: only right after the part before it, so pages never mix
+                if (session.Details == null || session.Details.Mods.Count != details.ModOffset)
+                {
+                    return false;
+                }
+
+                session.Details = session.Details with
+                {
+                    Mods = session.Details.Mods.Concat(mods).Take(Protocol.MaxListedMods).ToList(),
+                    Updated = now
+                };
+                return true;
+            }
+
+            session.Details = new SessionDetailsView(
+                Math.Clamp(details.Population, 0, 100_000_000),
+                Math.Clamp(details.Milestone, 0, 1000),
+                Math.Clamp(details.Year, 0, 100_000),
+                Math.Clamp(details.Month, 0, 11),
+                details.Players.Take(Protocol.MaxListedPlayers)
+                    .Select(p => new PlayerView(Clean(p.Name, 32) ?? "?", CleanColor(p.Color)))
+                    .ToList(),
+                mods.Take(Protocol.MaxListedMods).ToList(),
+                Math.Clamp(details.ModCount, 0, 10000),
+                now);
+            return true;
+        }
+    }
+
     public bool Unregister(IPEndPoint external, string? token)
     {
         if (!IsValidToken(token))
@@ -199,7 +268,7 @@ public sealed partial class SessionRegistry
                 .OrderByDescending(s => s.PlayerCount)
                 .ThenBy(s => s.CityName ?? "￿", StringComparer.OrdinalIgnoreCase)
                 .Select(s => new SessionView(s.Token, s.CityName, s.HostName, s.PlayerCount, s.MaxPlayers,
-                    s.HasPassword, s.GameVersion, s.ModVersion, s.LastSeen))
+                    s.HasPassword, s.GameVersion, s.ModVersion, s.LastSeen, s.Details))
                 .ToList();
         }
     }
@@ -217,6 +286,14 @@ public sealed partial class SessionRegistry
         }
 
         return new IPEndPoint(address, localPort);
+    }
+
+    [GeneratedRegex("^#[0-9A-Fa-f]{6}$")]
+    private static partial Regex ColorPattern();
+
+    private static string? CleanColor(string? color)
+    {
+        return color != null && ColorPattern().IsMatch(color) ? color.ToUpperInvariant() : null;
     }
 
     /// <summary>Trims, drops control characters and caps the length of a name shown to other players.</summary>

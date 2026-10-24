@@ -131,6 +131,10 @@ public sealed class UdpService : INatPunchListener
                 Registered(remote, registration.Token,
                     _registry.Register(remote, registration.Token, registration.LocalIp, registration.LocalPort, null));
                 break;
+            case Protocol.SessionDetailsMessage details:
+                // Ignored unless the session is live and from the host's address; the next keep-alive retries
+                _registry.UpdateDetails(remote, details);
+                break;
             case Protocol.ServerUnregisterMessage unregister:
                 if (_registry.Unregister(remote, unregister.Token))
                 {

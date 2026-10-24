@@ -22,7 +22,7 @@ var builder = MessagePackSerializerOptions.Standard.WithResolver(StandardResolve
 foreach (Type type in new[]
          {
              typeof(PortCheckRequestCommand), typeof(PortCheckResultCommand), typeof(ServerRegistrationCommand),
-             typeof(SessionInfoCommand), typeof(ServerUnregisterCommand)
+             typeof(SessionInfoCommand), typeof(ServerUnregisterCommand), typeof(SessionDetailsCommand)
          })
 {
     builder.SubType(typeof(ApiCommandBase), type);
@@ -83,6 +83,69 @@ Check(listed.ValueKind == JsonValueKind.Object && listed.GetProperty("name").Get
       listed.GetProperty("players").GetInt32() == 1, "SessionInfoCommand listed with its details");
 Check(!raw.Contains(localIp) && !raw.Contains("\"ip\"", StringComparison.OrdinalIgnoreCase), "no addresses in /sessions");
 Console.WriteLine("  /sessions: " + raw);
+Check(listed.ValueKind == JsonValueKind.Object && listed.GetProperty("details").ValueKind == JsonValueKind.Null,
+    "no details before SessionDetailsCommand");
+
+// SessionDetailsCommand: stored and listed; only from the host's address, so a wrong token is ignored
+var details = new SessionDetailsCommand
+{
+    Token = token, Population = 12480, Milestone = 7, Year = 2026, Month = 5,
+    PlayerNames = new[] { "tester", "Shep" }, PlayerColors = new[] { "#D6FF3F", "not a colour" },
+    ModIds = new[] { "12345", "local:SomeMod", "67890" }, ModNames = new[] { "Some Asset Pack", "", "I18N Everywhere" },
+    ModVersions = new[] { "1.0", "0.2.0.0", "2.1" }, ModClientSide = new[] { false, false, true }, ModCount = 4
+};
+byte[] detailsBytes = Serialize(details);
+Console.WriteLine($"  SessionDetailsCommand: {detailsBytes.Length} bytes");
+host.SendUnconnectedMessage(detailsBytes, lobby);
+host.SendUnconnectedMessage(Serialize(new SessionDetailsCommand { Token = "NOSUCHSESSION", Population = 1 }), lobby);
+Pump(300, host);
+raw = await http.GetStringAsync("sessions");
+listed = (await Sessions()).EnumerateArray().FirstOrDefault(s => s.GetProperty("token").GetString() == token);
+JsonElement d = listed.ValueKind == JsonValueKind.Object ? listed.GetProperty("details") : default;
+Check(d.ValueKind == JsonValueKind.Object && d.GetProperty("population").GetInt32() == 12480 &&
+      d.GetProperty("milestone").GetInt32() == 7 && d.GetProperty("year").GetInt32() == 2026 &&
+      d.GetProperty("month").GetInt32() == 5 && d.GetProperty("modCount").GetInt32() == 4,
+    "SessionDetailsCommand listed with population, milestone, date");
+Check(d.ValueKind == JsonValueKind.Object && d.GetProperty("playerList").GetArrayLength() == 2 &&
+      d.GetProperty("playerList")[0].GetProperty("color").GetString() == "#D6FF3F" &&
+      d.GetProperty("playerList")[1].GetProperty("color").ValueKind == JsonValueKind.Null,
+    "player list with colours, bad colour dropped");
+Check(d.ValueKind == JsonValueKind.Object && d.GetProperty("mods").GetArrayLength() == 3 &&
+      d.GetProperty("mods")[1].GetProperty("id").GetString() == "local:SomeMod" &&
+      d.GetProperty("mods")[1].GetProperty("name").ValueKind == JsonValueKind.Null &&
+      d.GetProperty("mods")[2].GetProperty("clientSide").GetBoolean(),
+    "mod list with ids, versions and client side flags");
+Check(!raw.Contains("NOSUCHSESSION"), "details for an unknown token ignored");
+Check(!raw.Contains(localIp) && !raw.Contains("\"ip\"", StringComparison.OrdinalIgnoreCase), "still no addresses in /sessions");
+Console.WriteLine("  /sessions: " + raw);
+
+// A long mod list in two packets, each under the mod's 1000 byte cap (ApiServer.BuildDetails)
+string[] allIds = Enumerable.Range(0, 30).Select(i => "local:" + new string('m', 40) + i).ToArray();
+SessionDetailsCommand Page(int offset, int count, bool first) => new()
+{
+    Token = token, ModOffset = offset, ModCount = allIds.Length,
+    PlayerNames = first ? Enumerable.Range(0, 16).Select(i => new string('p', 31) + (char)('a' + i)).ToArray() : null,
+    PlayerColors = first ? Enumerable.Range(0, 16).Select(_ => "#40BFFF").ToArray() : null,
+    ModIds = allIds.Skip(offset).Take(count).ToArray(),
+    ModNames = allIds.Skip(offset).Take(count).Select(_ => new string('n', 40)).ToArray(),
+    ModVersions = allIds.Skip(offset).Take(count).Select(_ => "1.2.3.4").ToArray(),
+    ModClientSide = allIds.Skip(offset).Take(count).Select((_, i) => i % 2 == 0).ToArray()
+};
+int firstCount = allIds.Length;
+while (Serialize(Page(0, firstCount, true)).Length > 1000) firstCount--;
+int secondCount = allIds.Length - firstCount;
+while (Serialize(Page(firstCount, secondCount, false)).Length > 1000) secondCount--;
+// out of order first: a continuation that doesn't follow what's stored is dropped
+host.SendUnconnectedMessage(Serialize(Page(firstCount + 1, 1, false)), lobby);
+host.SendUnconnectedMessage(Serialize(Page(0, firstCount, true)), lobby);
+Pump(150, host);
+host.SendUnconnectedMessage(Serialize(Page(firstCount, secondCount, false)), lobby);
+Pump(300, host);
+d = (await Sessions()).EnumerateArray().First(s => s.GetProperty("token").GetString() == token).GetProperty("details");
+Check(d.GetProperty("playerList").GetArrayLength() == 16 &&
+      d.GetProperty("mods").GetArrayLength() == firstCount + secondCount &&
+      d.GetProperty("mods")[firstCount].GetProperty("id").GetString() == allIds[firstCount],
+    $"mod list in two packets ({firstCount} + {secondCount} mods) joined in order");
 
 // Port check: open (the host rejects the probe's key), then a closed port
 host.SendUnconnectedMessage(Serialize(new PortCheckRequestCommand { Port = host.LocalPort }), lobby);
