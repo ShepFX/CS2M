@@ -17,6 +17,10 @@ namespace CS2M.BaseGame.Systems
     {
         private EntityQuery _tempBlocks;
 
+        // The apply phase runs on two frames for one click; the second, identical send is dropped
+        private readonly Dictionary<string, float> _recentlySent = new Dictionary<string, float>();
+        private const float RepeatWindow = 0.5f;
+
         protected override void OnCreate()
         {
             base.OnCreate();
@@ -63,6 +67,19 @@ namespace CS2M.BaseGame.Systems
                     }
 
                     Block block = EntityManager.GetComponentData<Block>(temp.m_Original);
+                    string key = $"{block.m_Position}|{string.Join(",", indices)}|{string.Join(",", zones)}";
+                    float now = UnityEngine.Time.realtimeSinceStartup;
+                    if (_recentlySent.TryGetValue(key, out float sentAt) && now - sentAt < RepeatWindow)
+                    {
+                        continue;
+                    }
+
+                    _recentlySent[key] = now;
+                    if (_recentlySent.Count > 256)
+                    {
+                        _recentlySent.Clear();
+                    }
+
                     Command.SendToAll(new ZoneCellsCommand
                     {
                         PosX = block.m_Position.x,

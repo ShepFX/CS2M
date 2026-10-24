@@ -1,5 +1,6 @@
 ﻿using System.Reflection;
 using Colossal.IO.AssetDatabase;
+using CS2M.API.Commands;
 using CS2M.BaseGame.Systems;
 using CS2M.Commands;
 using CS2M.Commands.ApiServer;
@@ -9,6 +10,7 @@ using CS2M.Settings;
 using CS2M.UI;
 using Game;
 using Game.Modding;
+using Game.Rendering;
 using Game.Tools;
 using HarmonyLib;
 using LiteNetLib;
@@ -58,6 +60,7 @@ namespace CS2M
             Log.Info("Configured and initialised mod settings");
 
             CommandInternal.Instance = new CommandInternal();
+            Command.GetLocalUsername = () => NetworkInterface.Instance.LocalPlayer.Username;
             ApiCommand.Instance = new ApiCommand();
 
             NetDebug.Logger = new NetLogWrapper();
@@ -74,6 +77,10 @@ namespace CS2M
             // Zoning: capture on the frame the zone tool applies, apply what other players send
             updateSystem.UpdateBefore<ZoneCaptureSystem, ApplyZonesSystem>(SystemUpdatePhase.ApplyTool);
             updateSystem.UpdateAfter<ZoneApplySystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
+            // Other players' cursors: share ours, draw theirs as rings with name labels
+            updateSystem.UpdateAfter<CursorSystem, ToolRaycastSystem>(SystemUpdatePhase.Raycast);
+            updateSystem.UpdateBefore<CursorOverlaySystem, OverlayRenderSystem>(SystemUpdatePhase.Rendering);
+            updateSystem.UpdateAt<CursorUISystem>(SystemUpdatePhase.UIUpdate);
             Log.Info("Loading complete");
         }
 
