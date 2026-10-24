@@ -1,13 +1,19 @@
 import {ModuleRegistryExtend} from "cs2/modding";
 import {MenuButton} from "cs2/ui";
 import {trigger} from "cs2/api";
-import {LocalizedString} from "cs2/l10n";
+import {useLocalization} from "cs2/l10n";
 import mod from "../../mod.json";
 import {JoinGameMenu} from "../screens/join-game-menu";
 import {HostGameMenu} from "../screens/host-game-menu";
 
 export function showMultiplayerMenu() {
     trigger(mod.id, "ShowMultiplayerMenu");
+}
+
+// MenuButton needs its label as plain text; a LocalizedString child renders empty there
+function MultiplayerButton() {
+    const {translate} = useLocalization();
+    return <MenuButton onClick={showMultiplayerMenu}>{translate("CS2M.UI.Multiplayer", "Multiplayer")}</MenuButton>;
 }
 
 // Extend TransitionGroupCoordinator as it is the only place we can put the JoinGameMenu
@@ -41,7 +47,7 @@ export const PauseMenuCSMExtend : ModuleRegistryExtend = (Component) => {
         if (props.src == 'Media/Glyphs/ArrowRight.svg') {
             return (
                 <>
-                    <MenuButton onClick={showMultiplayerMenu}><LocalizedString id={"CS2M.UI.Multiplayer"}/></MenuButton>
+                    <MultiplayerButton/>
                     <Component {...otherProps}>
                         {children}
                     </Component>
