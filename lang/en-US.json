@@ -122,5 +122,6 @@
   "CS2M.UI.Browser.Forget": "Remove from recent",
   "CS2M.UI.Browser.MinutesAgo": "{N} min ago",
   "CS2M.UI.Browser.HoursAgo": "{N} h ago",
-  "CS2M.UI.Browser.DaysAgo": "{N} days ago"
+  "CS2M.UI.Browser.DaysAgo": "{N} days ago",
+  "CS2M.UI.Password": "Password"
 }

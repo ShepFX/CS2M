@@ -56,6 +56,9 @@ namespace CS2M.UI
         private ValueBinding<string> _localMods;
         private ValueBinding<string> _recentSessions;
         private ValueBinding<int> _hostMaxPlayers;
+        // passwords are kept for this game run only, never saved
+        private ValueBinding<string> _hostPassword;
+        private ValueBinding<string> _joinPassword;
         private RecentSessions.Entry _pendingRecent;
         private readonly Stopwatch _sinceModsRefresh = new();
         private const int MaxPlayersLimit = 64;
@@ -169,6 +172,10 @@ namespace CS2M.UI
             AddBinding(_joinPort = new ValueBinding<int>(Mod.Name, "JoinPort", settings?.LastJoinPort ?? 0));
             AddBinding(_hostPort = new ValueBinding<int>(Mod.Name, "HostPort", settings?.LastHostPort ?? 0));
             AddBinding(_hostMaxPlayers = new ValueBinding<int>(Mod.Name, "HostMaxPlayers", settings?.HostMaxPlayers ?? 0));
+            AddBinding(_hostPassword = new ValueBinding<string>(Mod.Name, "HostPassword", ""));
+            AddBinding(_joinPassword = new ValueBinding<string>(Mod.Name, "JoinPassword", ""));
+            AddBinding(new TriggerBinding<string>(Mod.Name, "SetHostPassword", pw => _hostPassword.Update(CapPassword(pw))));
+            AddBinding(new TriggerBinding<string>(Mod.Name, "SetJoinPassword", pw => _joinPassword.Update(CapPassword(pw))));
             AddBinding(new TriggerBinding<int>(Mod.Name, "SetHostMaxPlayers",
                 max => { _hostMaxPlayers.Update(Math.Max(0, Math.Min(MaxPlayersLimit, max))); }));
             AddBinding(_localMods = new ValueBinding<string>(Mod.Name, "LocalMods", "[]"));
@@ -277,7 +284,7 @@ namespace CS2M.UI
             });
             NetworkInterface.Instance.UpdateLocalPlayerUsername(_username.value?.Trim());
             _pendingRecent = new RecentSessions.Entry { Ip = _joinIPAddress.value?.Trim() ?? "", Port = _joinPort.value };
-            NetworkInterface.Instance.Connect(new ConnectionConfig(_joinIPAddress.value, _joinPort.value, ""));
+            NetworkInterface.Instance.Connect(new ConnectionConfig(_joinIPAddress.value, _joinPort.value, _joinPassword.value ?? ""));
         }
 
         /// <summary>
@@ -301,7 +308,7 @@ namespace CS2M.UI
                 Name = Clean(cityName, 64),
                 Host = Clean(hostName, 32)
             };
-            NetworkInterface.Instance.Connect(new ConnectionConfig(token, ""));
+            NetworkInterface.Instance.Connect(new ConnectionConfig(token, _joinPassword.value ?? ""));
         }
 
         /// <summary>
@@ -403,6 +410,12 @@ namespace CS2M.UI
             });
         }
 
+        private static string CapPassword(string password)
+        {
+            password = password ?? "";
+            return password.Length > 64 ? password.Substring(0, 64) : password;
+        }
+
         private void HostGame()
         {
             SaveConnection(settings =>
@@ -411,7 +424,7 @@ namespace CS2M.UI
                 settings.HostMaxPlayers = _hostMaxPlayers.value;
             });
             NetworkInterface.Instance.UpdateLocalPlayerUsername(_username.value?.Trim());
-            NetworkInterface.Instance.StartServer(new ConnectionConfig(_hostPort.value));
+            NetworkInterface.Instance.StartServer(new ConnectionConfig(_hostPort.value, string.IsNullOrEmpty(_hostPassword.value) ? null : _hostPassword.value));
         }
 
         private void SaveConnection(System.Action<ModSettings> update)

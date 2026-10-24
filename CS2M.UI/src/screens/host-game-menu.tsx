@@ -10,6 +10,7 @@ export const hostMenuVisible = bindValue<boolean>(mod.id, 'HostMenuVisible');
 export const modSupport = bindValue<Array<any>>(mod.id, 'modSupport');
 export const port = bindValue<number>(mod.id, 'HostPort');
 export const maxPlayers = bindValue<number>(mod.id, 'HostMaxPlayers', 0);
+export const hostPassword = bindValue<string>(mod.id, 'HostPassword', '');
 export const username = bindValue<string>(mod.id, 'Username');
 export const playerStatus = bindValue<string>(mod.id, 'PlayerStatus');
 
@@ -38,6 +39,7 @@ export const HostGameSettings = () => {
     const status = useValue(playerStatus);
 
     const enabled = status == "INACTIVE";
+    const hostPasswordValue = useValue(hostPassword);
     const {translate} = useLocalization();
 
     const focusChange = () => {
@@ -55,6 +57,11 @@ export const HostGameSettings = () => {
                         <InputField label={"CS2M.UI.Username"} value={usernameValue} disabled={!enabled}
                                     onChange={(val: any) => {
                                         setVal("SetUsername", val)
+                                    }}></InputField>
+                        {/* empty = open session; kept for this game run only */}
+                        <InputField label={"CS2M.UI.Password"} value={hostPasswordValue} disabled={!enabled} maxLength={64}
+                                    onChange={(val: any) => {
+                                        setVal("SetHostPassword", val)
                                     }}></InputField>
                         {/* host included; 0 or empty is no limit */}
                         <InputField label={"CS2M.UI.MaxPlayers"} value={maxPlayersValue > 0 ? String(maxPlayersValue) : ""}

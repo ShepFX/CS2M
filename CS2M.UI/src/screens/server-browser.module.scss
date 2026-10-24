@@ -558,3 +558,11 @@ $host: #d6ff3f;
 .markBad {
     background-color: $bad;
 }
+
+
+// a status line that mixes a localized string and plain text on one row
+.statusLine {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}

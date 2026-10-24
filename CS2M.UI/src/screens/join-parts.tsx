@@ -18,6 +18,7 @@ export const downloadDone = bindValue<number>(mod.id, 'DownloadDone');
 export const downloadRemaining = bindValue<number>(mod.id, 'DownloadRemaining');
 export const downloadSpeed = bindValue<number>(mod.id, 'DownloadSpeed');
 export const joinErrorMessage = bindValue<Array<string>>(mod.id, 'JoinErrorMessage');
+export const joinPassword = bindValue<string>(mod.id, 'JoinPassword', '');
 
 export function hideJoinGame() {
     trigger(mod.id, "HideJoinGameMenu");
@@ -29,6 +30,13 @@ export function setIntVal(name: string, value: any) {
 
 export function joinGame() {
     trigger(mod.id, "JoinGame");
+}
+
+/** Password for joining a locked session (Direct connect tab and locked browser sessions). */
+export const PasswordField = ({enabled}: {enabled: boolean}) => {
+    const value = useValue(joinPassword);
+    return <InputField label={"CS2M.UI.Password"} value={value} disabled={!enabled} maxLength={64}
+                       onChange={(val: any) => setVal("SetJoinPassword", val)}></InputField>;
 }
 
 /** The IP address and port join (Direct connect tab). */
@@ -51,6 +59,7 @@ export const JoinGameSettings = () => {
                             onChange={(val: any) => {
                                 setIntVal("SetJoinPort", val)
                             }}></InputField>
+                <PasswordField enabled={enabled}/>
             </NavigationScope>
         </FocusBoundary>
     );
@@ -133,16 +142,13 @@ export const JoinStatus = () => {
     }
 
     const dlTotal = dlDone + dlRemaining;
+    const percent = Math.round(100 * dlDone / (dlTotal == 0 ? 1 : dlTotal));
+    const mib = (bytes: number) => (bytes / 1024 / 1024).toFixed(1);
+    // one string per line: separate text nodes each get their own line in this layout
     return (
         <div className={styles.status}>
-            {statusStr} (<LocalizedPercentage value={dlDone} max={dlTotal == 0 ? 100 : dlTotal}/>)
-            {dlTotal > 0 && <div className={styles.muted}>
-                <LocalizedNumber unit={Unit.FloatSingleFraction} signed={false} value={dlDone / 1024 / 1024}/> MiB
-                {" / "}
-                <LocalizedNumber unit={Unit.FloatSingleFraction} signed={false} value={dlTotal / 1024 / 1024}/> MiB
-                {" ("}
-                <LocalizedNumber unit={Unit.FloatSingleFraction} signed={false} value={dlSpeed / 1024 / 1024}/> MiB/s)
-            </div>}
+            <div className={styles.statusLine}>{statusStr}<span>{` (${percent} %)`}</span></div>
+            {dlTotal > 0 && <div className={styles.muted}>{`${mib(dlDone)} MiB / ${mib(dlTotal)} MiB (${mib(dlSpeed)} MiB/s)`}</div>}
         </div>
     );
 }

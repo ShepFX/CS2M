@@ -23,6 +23,7 @@ import {
     ipAddress,
     joinGame,
     JoinGameSettings,
+    PasswordField,
     JoinMessages,
     JoinStatus,
     LocalCompatibility,
@@ -136,7 +137,7 @@ const VersionBadge = ({session, check}: { session: LobbySession, check: SessionC
     const ok = check.gameOk && check.modOk;
     return (
         <span className={styles.badge + " " + (ok ? styles.badgeOk : styles.badgeNo)}>
-            <Mark ok={ok}/> {session.gameVersion ?? "?"}
+            <Mark ok={ok}/>{shortVersion(session.gameVersion)}
         </span>
     );
 }
@@ -460,7 +461,10 @@ export const MultiplayerScreen = () => {
     if (tab == "browse" || tab == "modded") {
         if (selectedSession) {
             const check = checkOf(selectedSession);
-            details = <SessionDetails session={selectedSession} check={check}/>;
+            details = <>
+                <SessionDetails session={selectedSession} check={check}/>
+                {selectedSession.hasPassword && <div className={styles.detInner}><PasswordField enabled={true}/></div>}
+            </>;
             joinArea = <JoinArea label={joinLabel} reason={blockReason(translate, selectedSession, check, local)}
                                  onJoin={() => joinSession(selectedSession)}/>;
         } else {
@@ -550,4 +554,10 @@ export const MultiplayerScreen = () => {
             </div>
         </div>
     );
+}
+
+
+// "1.6.2f1 (768.21d1) [6300.27778]" -> "1.6.2f1": the full string doesn't fit the column
+function shortVersion(version?: string | null): string {
+    return (version ?? "?").split(" ")[0];
 }
