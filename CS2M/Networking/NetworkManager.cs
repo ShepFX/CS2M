@@ -258,8 +258,9 @@ namespace CS2M.Networking
             }
             else if (NetworkInterface.Instance.LocalPlayer.PlayerType == PlayerType.SERVER)
             {
-                NetworkInterface.Instance.GetPlayerByPeer(peer)?.HandleDisconnect();
-                // TODO: Handle peer disconnect on server
+                RemotePlayer player = NetworkInterface.Instance.GetPlayerByPeer(peer);
+                player?.HandleDisconnect();
+                NetworkInterface.Instance.PlayerDisconnected(player);
             }
         }
 

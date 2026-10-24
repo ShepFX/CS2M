@@ -33,7 +33,15 @@ namespace CS2M.Commands.Handler.Internal
                 result.Errors |= PreconditionsUtil.Errors.USERNAME_NOT_AVAILABLE;
             }
 
-            // Check the password to see if it matches (only if the server has provided a password).
+            // Player limit (the host counts as one): the joiner is told the session is full
+            int maxPlayers = CS2M.Networking.ApiServer.GetMaxPlayers();
+            if (maxPlayers > 0 && NetworkInterface.Instance.ConnectedPlayerCount >= maxPlayers)
+            {
+                Log.Info($"[Preconditions Check] '{command.Username}' turned away: the session is full ({maxPlayers} players).");
+                result.Errors |= PreconditionsUtil.Errors.SERVER_FULL;
+            }
+
+                        // Check the password to see if it matches (only if the server has provided a password).
             if (!string.IsNullOrEmpty(NetworkInterface.Instance.LocalPlayer.GetConnectionPassword()))
             {
                 if (!NetworkInterface.Instance.LocalPlayer.GetConnectionPassword().Equals(command.Password))

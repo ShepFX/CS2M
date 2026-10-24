@@ -46,9 +46,17 @@ namespace CS2M.UI
         private ValueBinding<string> _lobbyStatus;
         private readonly object _lobbyLock = new();
         private (string Status, string Json)? _lobbyResult;
-        private const int MaxLobbyResponse = 512 * 1024;
+        private const int MaxLobbyResponse = 4 * 1024 * 1024;
         private static readonly Regex SessionToken = new Regex("^[A-Za-z0-9_-]{4,64}$");
         private ValueBinding<bool> _hudCollapsed;
+
+        // Join menu: this game's mods and versions, to compare with the listed sessions, and the Recent tab
+        private ValueBinding<string> _localMods;
+        private ValueBinding<string> _recentSessions;
+        private ValueBinding<int> _hostMaxPlayers;
+        private RecentSessions.Entry _pendingRecent;
+        private readonly Stopwatch _sinceModsRefresh = new();
+        private const int MaxPlayersLimit = 64;
 
         private readonly Stopwatch _downloadTimer = new();
         private int _lastDownloadDone = 0;
@@ -88,6 +96,22 @@ namespace CS2M.UI
 
                 _lobbyStatus.Update(result.Value.Status);
             }
+
+            // The playset arrives asynchronously, so keep the local mod list fresh while the join menu is open
+            if (_joinMenuVisible.value && (!_sinceModsRefresh.IsRunning || _sinceModsRefresh.Elapsed.TotalSeconds >= 2))
+            {
+                UpdateLocalMods();
+            }
+        }
+
+        private void UpdateLocalMods()
+        {
+            _sinceModsRefresh.Restart();
+            string json = EnabledMods.ToJson(EnabledMods.Get());
+            if (json != _localMods.value)
+            {
+                _localMods.Update(json);
+            }
         }
 
         protected override void OnCreate()
@@ -105,7 +129,8 @@ namespace CS2M.UI
                 username => { _username.Update(username); }));
 
             AddBinding(new TriggerBinding(Mod.Name, "JoinGame", JoinGame));
-            AddBinding(new TriggerBinding<string>(Mod.Name, "JoinSession", JoinSession));
+            AddBinding(new TriggerBinding<string, string, string>(Mod.Name, "JoinSession", JoinSession));
+            AddBinding(new TriggerBinding<int>(Mod.Name, "RemoveRecent", RemoveRecent));
             AddBinding(new TriggerBinding(Mod.Name, "RefreshLobby", RefreshLobby));
             AddBinding(_lobbySessions = new ValueBinding<string>(Mod.Name, "LobbySessions", "[]"));
             AddBinding(_lobbyStatus = new ValueBinding<string>(Mod.Name, "LobbyStatus", "idle"));
@@ -122,6 +147,15 @@ namespace CS2M.UI
             AddBinding(_joinIPAddress = new ValueBinding<string>(Mod.Name, "JoinIpAddress", settings?.LastJoinIp ?? ""));
             AddBinding(_joinPort = new ValueBinding<int>(Mod.Name, "JoinPort", settings?.LastJoinPort ?? 0));
             AddBinding(_hostPort = new ValueBinding<int>(Mod.Name, "HostPort", settings?.LastHostPort ?? 0));
+            AddBinding(_hostMaxPlayers = new ValueBinding<int>(Mod.Name, "HostMaxPlayers", settings?.HostMaxPlayers ?? 0));
+            AddBinding(new TriggerBinding<int>(Mod.Name, "SetHostMaxPlayers",
+                max => { _hostMaxPlayers.Update(Math.Max(0, Math.Min(MaxPlayersLimit, max))); }));
+            AddBinding(_localMods = new ValueBinding<string>(Mod.Name, "LocalMods", "[]"));
+            AddBinding(new ValueBinding<string>(Mod.Name, "LocalVersions",
+                "{\"game\":" + EnabledMods.JsonString(VersionUtil.GetGameVersion().ToString()) +
+                ",\"mod\":" + EnabledMods.JsonString(VersionUtil.GetModVersion().ToString()) + "}"));
+            AddBinding(_recentSessions = new ValueBinding<string>(Mod.Name, "RecentSessions",
+                RecentSessions.ToJson(RecentSessions.Load(settings?.RecentSessions))));
             AddBinding(_username = new ValueBinding<string>(Mod.Name, "Username", settings?.LastUsername ?? ""));
             // multiplayer HUD hidden/shown, remembered between games
             AddBinding(_hudCollapsed = new ValueBinding<bool>(Mod.Name, "HudCollapsed", settings?.HudCollapsed ?? false));
@@ -150,6 +184,11 @@ namespace CS2M.UI
                 if (status == PlayerStatus.LOADING_MAP)
                 {
                     _joinMenuVisible.Update(false);
+                    RememberJoin();
+                }
+                else if (status == PlayerStatus.INACTIVE)
+                {
+                    _pendingRecent = null;
                 }
             };
         }
@@ -164,6 +203,8 @@ namespace CS2M.UI
             RefreshModSupport();
             if (_gameMode == GameMode.MainMenu)
             {
+                EnabledMods.RefreshPlayset(true);
+                UpdateLocalMods();
                 _activeMenuScreenBinding.Update(99);
                 _joinMenuVisible.Update(true);
                 RefreshLobby();
@@ -197,13 +238,17 @@ namespace CS2M.UI
                 settings.LastJoinPort = _joinPort.value;
             });
             NetworkInterface.Instance.UpdateLocalPlayerUsername(_username.value);
+            _pendingRecent = new RecentSessions.Entry { Ip = _joinIPAddress.value?.Trim() ?? "", Port = _joinPort.value };
             NetworkInterface.Instance.Connect(new ConnectionConfig(_joinIPAddress.value, _joinPort.value, ""));
         }
 
         /// <summary>
         ///     Joins a session from the server browser, through the API server's NAT introduction.
         /// </summary>
-        private void JoinSession(string token)
+        /// <param name="token">The session's lobby token.</param>
+        /// <param name="cityName">City and host as listed, only for the Recent tab.</param>
+        /// <param name="hostName"></param>
+        private void JoinSession(string token, string cityName, string hostName)
         {
             if (token == null || !SessionToken.IsMatch(token))
             {
@@ -212,7 +257,58 @@ namespace CS2M.UI
 
             SaveConnection(_ => { });
             NetworkInterface.Instance.UpdateLocalPlayerUsername(_username.value);
+            _pendingRecent = new RecentSessions.Entry
+            {
+                Token = token,
+                Name = Clean(cityName, 64),
+                Host = Clean(hostName, 32)
+            };
             NetworkInterface.Instance.Connect(new ConnectionConfig(token, ""));
+        }
+
+        /// <summary>
+        ///     The join got as far as loading the city: remember it for the Recent tab.
+        /// </summary>
+        private void RememberJoin()
+        {
+            RecentSessions.Entry entry = _pendingRecent;
+            _pendingRecent = null;
+            ModSettings settings = Mod.Instance?.Settings;
+            if (entry == null || settings == null)
+            {
+                return;
+            }
+
+            List<RecentSessions.Entry> entries = RecentSessions.Add(RecentSessions.Load(settings.RecentSessions), entry);
+            settings.RecentSessions = RecentSessions.ToJson(entries);
+            settings.ApplyAndSave();
+            _recentSessions.Update(settings.RecentSessions);
+        }
+
+        private void RemoveRecent(int index)
+        {
+            ModSettings settings = Mod.Instance?.Settings;
+            if (settings == null)
+            {
+                return;
+            }
+
+            List<RecentSessions.Entry> entries = RecentSessions.Load(settings.RecentSessions);
+            if (index < 0 || index >= entries.Count)
+            {
+                return;
+            }
+
+            entries.RemoveAt(index);
+            settings.RecentSessions = RecentSessions.ToJson(entries);
+            settings.ApplyAndSave();
+            _recentSessions.Update(settings.RecentSessions);
+        }
+
+        private static string Clean(string text, int maxLength)
+        {
+            text = new string((text ?? "").Where(c => !char.IsControl(c)).ToArray()).Trim();
+            return text.Length <= maxLength ? text : text.Substring(0, maxLength);
         }
 
         /// <summary>
@@ -271,7 +367,11 @@ namespace CS2M.UI
 
         private void HostGame()
         {
-            SaveConnection(settings => settings.LastHostPort = _hostPort.value);
+            SaveConnection(settings =>
+            {
+                settings.LastHostPort = _hostPort.value;
+                settings.HostMaxPlayers = _hostMaxPlayers.value;
+            });
             NetworkInterface.Instance.UpdateLocalPlayerUsername(_username.value);
             NetworkInterface.Instance.StartServer(new ConnectionConfig(_hostPort.value));
         }
