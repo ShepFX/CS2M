@@ -142,6 +142,12 @@ namespace CS2M.Mods
                             continue;
                         }
 
+                        // CS2M ships CS2M.API and CS2M.BaseGame next to CS2M.dll; they are part of it, not mods
+                        if (info.asset.name == "CS2M.API" || info.asset.name == "CS2M.BaseGame")
+                        {
+                            continue;
+                        }
+
                         string id = string.IsNullOrEmpty(meta.platformID)
                             ? LocalPrefix + info.asset.name
                             : meta.platformID;
