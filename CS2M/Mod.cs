@@ -77,6 +77,12 @@ namespace CS2M
             // Zoning: capture on the frame the zone tool applies, apply what other players send
             updateSystem.UpdateBefore<ZoneCaptureSystem, ApplyZonesSystem>(SystemUpdatePhase.ApplyTool);
             updateSystem.UpdateAfter<ZoneApplySystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
+            // Roads, bulldozing and game speed
+            updateSystem.UpdateBefore<RoadCaptureSystem, ApplyNetSystem>(SystemUpdatePhase.ApplyTool);
+            updateSystem.UpdateAfter<RoadApplySystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
+            updateSystem.UpdateBefore<BulldozeCaptureSystem, ApplyNetSystem>(SystemUpdatePhase.ApplyTool);
+            updateSystem.UpdateAfter<BulldozeApplySystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
+            updateSystem.UpdateAfter<SpeedSyncSystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
             // Other players' cursors: share ours, draw theirs as rings with name labels
             updateSystem.UpdateAfter<CursorSystem, ToolRaycastSystem>(SystemUpdatePhase.Raycast);
             updateSystem.UpdateBefore<CursorOverlaySystem, OverlayRenderSystem>(SystemUpdatePhase.Rendering);

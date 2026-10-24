@@ -6,6 +6,7 @@ using Colossal.UI.Binding;
 using CS2M.API.Networking;
 using CS2M.Mods;
 using CS2M.Networking;
+using CS2M.Settings;
 using Game;
 using Game.UI;
 using Game.UI.InGame;
@@ -74,10 +75,11 @@ namespace CS2M.UI
             AddBinding(_modSupportStatus = new ValueBinding<List<ModSupportStatus>>(Mod.Name, "modSupport",
                 new List<ModSupportStatus>(), new ListWriter<ModSupportStatus>(new ValueWriter<ModSupportStatus>())));
 
-            AddBinding(_joinIPAddress = new ValueBinding<string>(Mod.Name, "JoinIpAddress", ""));
-            AddBinding(_joinPort = new ValueBinding<int>(Mod.Name, "JoinPort", 0));
-            AddBinding(_hostPort = new ValueBinding<int>(Mod.Name, "HostPort", 0));
-            AddBinding(_username = new ValueBinding<string>(Mod.Name, "Username", ""));
+            ModSettings settings = Mod.Instance?.Settings;
+            AddBinding(_joinIPAddress = new ValueBinding<string>(Mod.Name, "JoinIpAddress", settings?.LastJoinIp ?? ""));
+            AddBinding(_joinPort = new ValueBinding<int>(Mod.Name, "JoinPort", settings?.LastJoinPort ?? 0));
+            AddBinding(_hostPort = new ValueBinding<int>(Mod.Name, "HostPort", settings?.LastHostPort ?? 0));
+            AddBinding(_username = new ValueBinding<string>(Mod.Name, "Username", settings?.LastUsername ?? ""));
 
             AddBinding(_playerStatus = new ValueBinding<string>(Mod.Name, "PlayerStatus", "INACTIVE"));
             AddBinding(_downloadDone = new ValueBinding<int>(Mod.Name, "DownloadDone", 0));
@@ -134,14 +136,37 @@ namespace CS2M.UI
 
         private void JoinGame()
         {
+            SaveConnection(settings =>
+            {
+                settings.LastJoinIp = _joinIPAddress.value;
+                settings.LastJoinPort = _joinPort.value;
+            });
             NetworkInterface.Instance.UpdateLocalPlayerUsername(_username.value);
             NetworkInterface.Instance.Connect(new ConnectionConfig(_joinIPAddress.value, _joinPort.value, ""));
         }
 
         private void HostGame()
         {
+            SaveConnection(settings => settings.LastHostPort = _hostPort.value);
             NetworkInterface.Instance.UpdateLocalPlayerUsername(_username.value);
             NetworkInterface.Instance.StartServer(new ConnectionConfig(_hostPort.value));
+        }
+
+        private void SaveConnection(System.Action<ModSettings> update)
+        {
+            ModSettings settings = Mod.Instance?.Settings;
+            if (settings == null)
+            {
+                return;
+            }
+
+            update(settings);
+            if (!string.IsNullOrEmpty(_username.value))
+            {
+                settings.LastUsername = _username.value;
+            }
+
+            settings.ApplyAndSave();
         }
 
         private void StopServer()

@@ -31,6 +31,19 @@ namespace CS2M.Settings
         [SettingsUITextInput]
         public string ApiServerPort { get; set; }
 
+        // Last used connection details, so the join and host menus remember them (upstream issue #17)
+        [SettingsUIHidden]
+        public string LastJoinIp { get; set; }
+
+        [SettingsUIHidden]
+        public int LastJoinPort { get; set; }
+
+        [SettingsUIHidden]
+        public int LastHostPort { get; set; }
+
+        [SettingsUIHidden]
+        public string LastUsername { get; set; }
+
         public ModSettings(IMod mod) : base(mod)
         {
             SetDefaults();
@@ -41,6 +54,10 @@ namespace CS2M.Settings
             LoggingLevel = Level.Info.severity;
             ApiServer = "api.citiesskylinesmultiplayer.com";
             ApiServerPort = "4242";
+            LastJoinIp = "";
+            LastJoinPort = 4230;
+            LastHostPort = 4230;
+            LastUsername = "";
         }
 
         public static DropdownItem<int>[] GetLoggingLevels()
