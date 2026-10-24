@@ -48,6 +48,15 @@ namespace CS2M.Networking
         public static NetworkInterface Instance => _instance ??= new NetworkInterface();
 
         /// <summary>
+        ///     The id the host stamps on its own messages. Joiners get 1, 2, 3... in join order.
+        /// </summary>
+        public const int HostPlayerId = 0;
+
+        // Host: ids are never reused within a run, unlike LiteNetLib's peer ids, so a newcomer can't inherit
+        // a player who left (their kick target, cursor or HUD entry)
+        private int _nextPlayerId = HostPlayerId + 1;
+
+        /// <summary>
         ///     Why the host disconnected us (kicked/banned), shown once in the HUD; null when there's nothing to show.
         /// </summary>
         public static string DisconnectNotice;
@@ -74,7 +83,7 @@ namespace CS2M.Networking
             }
 
             RemotePlayer player = PlayerListConnected.OfType<RemotePlayer>()
-                .FirstOrDefault(p => p.NetPeer != null && NetworkManager.PlayerIdOf(p.NetPeer) == playerId);
+                .FirstOrDefault(p => p.NetPeer != null && p.PlayerId == playerId);
             if (player == null)
             {
                 return null;
@@ -87,9 +96,7 @@ namespace CS2M.Networking
                 SaveBans();
             }
 
-            var reason = new LiteNetLib.Utils.NetDataWriter();
-            reason.Put(ban ? "You were banned by the host" : "You were kicked by the host");
-            player.NetPeer.Disconnect(reason);
+            NetworkManager.Disconnect(player.NetPeer, ban ? "You were banned by the host" : "You were kicked by the host");
             Log.Info($"{(ban ? "Banned" : "Kicked")} {player.Username}");
             return player.Username;
         }
@@ -136,8 +143,15 @@ namespace CS2M.Networking
 
         private const double ResyncCooldown = 15;
 
+        // Host: each joiner resync costs a full save, so they're limited per player and overall
+        private const double HostResyncPerPlayerSeconds = 30;
+        private const double HostResyncGlobalSeconds = 10;
+        private readonly Stopwatch _lastHostResync = new();
+
         // players waiting for the city; see SendWorld
         private readonly List<RemotePlayer> _worldQueue = new();
+        // players the current save is being sent to
+        private readonly HashSet<RemotePlayer> _sendingTo = new();
         private bool _sendingWorld;
         private readonly Stopwatch _lastResyncRequest = new();
 
@@ -218,28 +232,26 @@ namespace CS2M.Networking
             LocalPlayer.SendToClients(message);
         }
 
+        // Players are found through the connection object itself, never by NetPeer.Id: LiteNetLib reuses ids
         public RemotePlayer GetPlayerByPeer(NetPeer peer)
         {
-            return PlayerListConnected
-                .Where(p => p is RemotePlayer)
-                .Cast<RemotePlayer>()
-                .FirstOrDefault(p => p.NetPeer.Id == peer.Id);
+            return (peer?.Tag as PeerState)?.Player;
         }
 
         public bool IsPeerConnected(NetPeer peer)
         {
-            return PlayerListConnected
-                .Where(p => p is RemotePlayer)
-                .Cast<RemotePlayer>()
-                .Any(p => p.NetPeer.Id == peer.Id);
+            return GetPlayerByPeer(peer) != null;
         }
 
         public bool IsPeerJoined(NetPeer peer)
         {
-            return PlayerListJoined
-                .Where(p => p is RemotePlayer)
-                .Cast<RemotePlayer>()
-                .Any(p => p.NetPeer.Id == peer.Id);
+            RemotePlayer player = GetPlayerByPeer(peer);
+            return player != null && PlayerListJoined.Contains(player);
+        }
+
+        public RemotePlayer GetPlayerById(int playerId)
+        {
+            return PlayerListConnected.OfType<RemotePlayer>().FirstOrDefault(p => p.PlayerId == playerId);
         }
 
         /// <summary>
@@ -263,9 +275,10 @@ namespace CS2M.Networking
                 return;
             }
 
-            Log.Debug($"RemotePlayer '{player.Username}' disconnected.");
+            Log.Debug($"RemotePlayer '{player.Username}' ({player.PlayerId}) disconnected.");
             PlayerListConnected.Remove(player);
             PlayerListJoined.Remove(player);
+            _worldQueue.Remove(player);
             PlayerDisconnectedEvent?.Invoke(player);
         }
 
@@ -276,15 +289,35 @@ namespace CS2M.Networking
         {
             PlayerListConnected.RemoveAll(p => p is RemotePlayer);
             PlayerListJoined.RemoveAll(p => p is RemotePlayer);
+            _worldQueue.Clear();
         }
 
-        public void PlayerConnected(RemotePlayer player)
+        /// <summary>
+        ///     Host: a connection passed the join check. Gives it the next player id and sends it the city, once.
+        /// </summary>
+        public RemotePlayer RegisterPlayer(NetPeer peer, PeerState state, string username)
         {
-            Log.Debug($"RemotePlayer '{player.Username}' connected.");
+            if (state.Player != null)
+            {
+                return state.Player;
+            }
+
+            var player = new RemotePlayer(peer, username, PlayerType.CLIENT) { PlayerId = _nextPlayerId++ };
+            state.Player = player;
+            Log.Debug($"RemotePlayer '{player.Username}' ({player.PlayerId}) connected.");
             PlayerListConnected.Add(player);
             PlayerConnectedEvent?.Invoke(player);
 
             SendWorld(new List<RemotePlayer> { player });
+            return player;
+        }
+
+        /// <summary>
+        ///     Whether a name is taken by anyone in the session (the host included), ignoring case.
+        /// </summary>
+        public bool IsUsernameTaken(string username)
+        {
+            return PlayerListConnected.Any(p => TextRules.SameName(p.Username, username));
         }
 
         /// <summary>
@@ -322,25 +355,41 @@ namespace CS2M.Networking
                 _lastResyncRequest.Restart();
                 Log.Info("Resync: asking the host for its city");
                 Chat.Instance?.PrintGameMessage("Resync: asked the host for a fresh copy of the city.");
+                // the host resends to whoever's connection the request came on; the name is only informative
                 SendToServer(new ResyncRequestCommand { Username = LocalPlayer.Username });
             }
         }
 
         /// <summary>
-        ///     Host: a joiner asked for the city again.
+        ///     Host: a joiner asked for the city again. Only ever resends to the player who asked (the id the
+        ///     host stamped on the request), at most once per <see cref="HostResyncPerPlayerSeconds" /> per player
+        ///     and once per <see cref="HostResyncGlobalSeconds" /> overall.
         /// </summary>
-        public void ResendWorld(string username)
+        public void ResendWorld(int playerId)
         {
-            RemotePlayer player = PlayerListConnected.OfType<RemotePlayer>()
-                .FirstOrDefault(p => p.Username == username && IsConnected(p));
-            if (player == null)
+            RemotePlayer player = GetPlayerById(playerId);
+            if (player == null || !IsConnected(player) || !(player.NetPeer.Tag is PeerState state))
             {
-                Log.Warn($"Resync requested by '{username}', who isn't connected");
+                RateLimitedLog.Warn("resync-unknown", $"Resync requested by player {playerId}, who isn't connected");
                 return;
             }
 
-            Log.Info($"Resync: '{username}' asked for the city again");
-            Chat.Instance?.PrintGameMessage($"Resync: sending the city to {username} again.");
+            if (_worldQueue.Contains(player) || _sendingTo.Contains(player))
+            {
+                return;
+            }
+
+            if ((state.LastResync.IsRunning && state.LastResync.Elapsed.TotalSeconds < HostResyncPerPlayerSeconds) ||
+                (_lastHostResync.IsRunning && _lastHostResync.Elapsed.TotalSeconds < HostResyncGlobalSeconds))
+            {
+                RateLimitedLog.Warn($"resync:{playerId}", $"Resync request from {player.Username} ignored: too soon");
+                return;
+            }
+
+            state.LastResync.Restart();
+            _lastHostResync.Restart();
+            Log.Info($"Resync: '{player.Username}' asked for the city again");
+            Chat.Instance?.PrintGameMessage($"Resync: sending the city to {player.Username} again.");
             SendWorld(new List<RemotePlayer> { player });
         }
 
@@ -375,6 +424,8 @@ namespace CS2M.Networking
                     {
                         List<RemotePlayer> batch = _worldQueue.Where(IsConnected).ToList();
                         _worldQueue.Clear();
+                        _sendingTo.Clear();
+                        _sendingTo.UnionWith(batch);
                         if (batch.Count == 0)
                         {
                             break;
@@ -394,6 +445,11 @@ namespace CS2M.Networking
                         Log.Debug($"Sending world with size of {stream.Length} bytes to {batch.Count} player(s). Slice size: {maxPacketSize}");
                         foreach (RemotePlayer player in batch)
                         {
+                            if (!IsConnected(player))
+                            {
+                                continue;
+                            }
+
                             int remainingBytes = (int)stream.Length;
                             bool newTransfer = true;
                             foreach (byte[] slice in stream.GetSlices())
@@ -422,6 +478,7 @@ namespace CS2M.Networking
                 finally
                 {
                     _sendingWorld = false;
+                    _sendingTo.Clear();
                 }
             });
         }

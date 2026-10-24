@@ -17,7 +17,8 @@ namespace CS2M.Commands.Handler.Internal
         {
             if (NetworkInterface.Instance.LocalPlayer.PlayerType == PlayerType.SERVER)
             {
-                NetworkInterface.Instance.ResendWorld(command.Username);
+                // SenderId was stamped by the host from the connection: a player can only resync themselves
+                NetworkInterface.Instance.ResendWorld(command.SenderId);
             }
         }
     }
