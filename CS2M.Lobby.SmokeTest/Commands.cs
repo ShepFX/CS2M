@@ -1,4 +1,5 @@
-// Copies of CS2M/Commands/ApiServer: the property names are what matters on the wire
+// Copies of CS2M/Commands/ApiServer: the property names are what matters on the wire.
+// TokenSecret is the optional host secret (see CS2M.Lobby/Protocol.cs); the mod doesn't send it yet.
 namespace CS2M.Commands.ApiServer
 {
     public abstract class ApiCommandBase
@@ -28,6 +29,57 @@ namespace CS2M.Commands.ApiServer
         public string Token { get; set; }
         public string LocalIp { get; set; }
         public int LocalPort { get; set; }
+        public string TokenSecret { get; set; }
+    }
+
+    public class SessionInfoCommand : ApiCommandBase
+    {
+        public string Token { get; set; }
+        public string LocalIp { get; set; }
+        public int LocalPort { get; set; }
+        public string CityName { get; set; }
+        public string HostName { get; set; }
+        public int PlayerCount { get; set; }
+        public int MaxPlayers { get; set; }
+        public bool HasPassword { get; set; }
+        public string GameVersion { get; set; }
+        public string ModVersion { get; set; }
+        public string TokenSecret { get; set; }
+    }
+
+    public class ServerUnregisterCommand : ApiCommandBase
+    {
+        public string Token { get; set; }
+        public string TokenSecret { get; set; }
+    }
+
+    public class SessionDetailsCommand : ApiCommandBase
+    {
+        public string Token { get; set; }
+        public int Population { get; set; }
+        public int Milestone { get; set; }
+        public int Year { get; set; }
+        public int Month { get; set; }
+        public string[] PlayerNames { get; set; }
+        public string[] PlayerColors { get; set; }
+        public string[] ModIds { get; set; }
+        public string[] ModNames { get; set; }
+        public string[] ModVersions { get; set; }
+        public bool[] ModClientSide { get; set; }
+        public int ModCount { get; set; }
+        public int ModOffset { get; set; }
+    }
+}
+
+// The commands exactly as the current mod has them (no TokenSecret), registered in the same order in a second
+// model, so the smoke test also speaks the older wire format
+namespace CS2M.Commands.ApiServer.Legacy
+{
+    public class ServerRegistrationCommand : ApiCommandBase
+    {
+        public string Token { get; set; }
+        public string LocalIp { get; set; }
+        public int LocalPort { get; set; }
     }
 
     public class SessionInfoCommand : ApiCommandBase
@@ -47,22 +99,5 @@ namespace CS2M.Commands.ApiServer
     public class ServerUnregisterCommand : ApiCommandBase
     {
         public string Token { get; set; }
-    }
-
-    public class SessionDetailsCommand : ApiCommandBase
-    {
-        public string Token { get; set; }
-        public int Population { get; set; }
-        public int Milestone { get; set; }
-        public int Year { get; set; }
-        public int Month { get; set; }
-        public string[] PlayerNames { get; set; }
-        public string[] PlayerColors { get; set; }
-        public string[] ModIds { get; set; }
-        public string[] ModNames { get; set; }
-        public string[] ModVersions { get; set; }
-        public bool[] ModClientSide { get; set; }
-        public int ModCount { get; set; }
-        public int ModOffset { get; set; }
     }
 }

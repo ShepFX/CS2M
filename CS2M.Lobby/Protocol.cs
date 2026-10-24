@@ -11,8 +11,15 @@ namespace CS2M.Lobby;
 ///     int propertyCount
 ///     (int propertyKey, value) * propertyCount
 ///                          property keys are the command's writable properties sorted by name, from 0
+///                          (case-insensitive: Attributeless puts "aB" before "Ca")
 ///     </code>
 ///     The whole thing is the payload of a LiteNetLib unconnected message.
+///     <para>
+///         Compatibility rules: a new command goes at the end of ApiCommand.ProtocolOrder. An existing command may
+///         only gain a property whose name sorts after all of its current ones, so no existing key moves (that is
+///         how TokenSecret was added). Unknown keys are skipped here, so a newer mod still works with an older
+///         lobby, and a missing key reads as its default, so an older mod still works with this one.
+///     </para>
 /// </summary>
 public static class Protocol
 {
@@ -40,20 +47,24 @@ public static class Protocol
     /// <summary>Properties: Port = 0</summary>
     public sealed record PortCheckRequestMessage(int Port) : Message;
 
-    /// <summary>Properties: LocalIp = 0, LocalPort = 1, Token = 2</summary>
-    public sealed record ServerRegistrationMessage(string? Token, string? LocalIp, int LocalPort) : Message;
+    /// <summary>
+    ///     Properties: LocalIp = 0, LocalPort = 1, Token = 2, TokenSecret = 3.
+    ///     TokenSecret (optional, newer mods): see <see cref="SessionRegistry.IsValidSecret" />.
+    /// </summary>
+    public sealed record ServerRegistrationMessage(string? Token, string? LocalIp, int LocalPort, string? Secret)
+        : Message;
 
     /// <summary>
     ///     Properties: CityName = 0, GameVersion = 1, HasPassword = 2, HostName = 3, LocalIp = 4, LocalPort = 5,
-    ///     MaxPlayers = 6, ModVersion = 7, PlayerCount = 8, Token = 9
+    ///     MaxPlayers = 6, ModVersion = 7, PlayerCount = 8, Token = 9, TokenSecret = 10 (optional, newer mods)
     /// </summary>
     public sealed record SessionInfoMessage(
         string? Token, string? LocalIp, int LocalPort,
         string? CityName, string? HostName, int PlayerCount, int MaxPlayers, bool HasPassword,
-        string? GameVersion, string? ModVersion) : Message;
+        string? GameVersion, string? ModVersion, string? Secret = null) : Message;
 
-    /// <summary>Properties: Token = 0</summary>
-    public sealed record ServerUnregisterMessage(string? Token) : Message;
+    /// <summary>Properties: Token = 0, TokenSecret = 1 (optional, newer mods)</summary>
+    public sealed record ServerUnregisterMessage(string? Token, string? Secret = null) : Message;
 
     public sealed record ListedMod(string Id, string? Name, string? Version, bool ClientSide);
 
@@ -94,7 +105,7 @@ public static class Protocol
 
         int port = 0, localPort = 0, playerCount = 0, maxPlayers = 0;
         bool hasPassword = false;
-        string? token = null, localIp = null, cityName = null, hostName = null, gameVersion = null, modVersion = null;
+        string? token = null, secret = null, localIp = null, cityName = null, hostName = null, gameVersion = null, modVersion = null;
         int population = 0, milestone = 0, year = 0, month = 0, modCount = 0, modOffset = 0;
         List<string?>? playerNames = null, playerColors = null, modIds = null, modNames = null, modVersions = null;
         List<bool>? modClientSide = null;
@@ -109,6 +120,7 @@ public static class Protocol
                 case (ServerRegistration, 0): localIp = ReadString(ref reader); break;
                 case (ServerRegistration, 1): localPort = reader.ReadInt32(); break;
                 case (ServerRegistration, 2): token = ReadString(ref reader); break;
+                case (ServerRegistration, 3): secret = ReadString(ref reader); break;
 
                 case (SessionInfo, 0): cityName = ReadString(ref reader); break;
                 case (SessionInfo, 1): gameVersion = ReadString(ref reader); break;
@@ -120,8 +132,10 @@ public static class Protocol
                 case (SessionInfo, 7): modVersion = ReadString(ref reader); break;
                 case (SessionInfo, 8): playerCount = reader.ReadInt32(); break;
                 case (SessionInfo, 9): token = ReadString(ref reader); break;
+                case (SessionInfo, 10): secret = ReadString(ref reader); break;
 
                 case (ServerUnregister, 0): token = ReadString(ref reader); break;
+                case (ServerUnregister, 1): secret = ReadString(ref reader); break;
 
                 case (SessionDetails, 0): milestone = reader.ReadInt32(); break;
                 case (SessionDetails, 1): modClientSide = ReadBoolArray(ref reader, MaxListedMods); break;
@@ -144,10 +158,10 @@ public static class Protocol
         return type switch
         {
             PortCheckRequest => new PortCheckRequestMessage(port),
-            ServerRegistration => new ServerRegistrationMessage(token, localIp, localPort),
+            ServerRegistration => new ServerRegistrationMessage(token, localIp, localPort, secret),
             SessionInfo => new SessionInfoMessage(token, localIp, localPort, cityName, hostName, playerCount,
-                maxPlayers, hasPassword, gameVersion, modVersion),
-            ServerUnregister => new ServerUnregisterMessage(token),
+                maxPlayers, hasPassword, gameVersion, modVersion, secret),
+            ServerUnregister => new ServerUnregisterMessage(token, secret),
             SessionDetails => new SessionDetailsMessage(token, population, milestone, year, month,
                 ZipPlayers(playerNames, playerColors), ZipMods(modIds, modNames, modVersions, modClientSide), modCount, modOffset),
             _ => null // PortCheckResult only goes from us to the mod

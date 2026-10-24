@@ -43,7 +43,7 @@ using PosixSignalRegistration sigint = PosixSignalRegistration.Create(PosixSigna
 
 var registry = new SessionRegistry(config);
 var udp = new UdpService(config, registry);
-var http = new HttpApi(config, registry);
+var http = new HttpApi(config, registry, () => udp.Healthy);
 
 Log.Info($"CS2M lobby starting (UDP {config.UdpPort}, HTTP {config.HttpPort}, session TTL {config.SessionTtl.TotalSeconds:0}s)");
 
