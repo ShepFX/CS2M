@@ -91,20 +91,28 @@ namespace CS2M.BaseGame.Systems
             if (keys.Count > 0)
             {
                 Command.SendToAll?.Invoke(new DistrictNamesCommand { Districts = keys.ToArray(), Indices = indices.ToArray() });
+                BaseGameLog.Info($"District names sent: {keys.Count}");
             }
         }
 
         private void Apply(DistrictNamesCommand command)
         {
+            int applied = 0;
             for (int i = 0; i < command.Districts.Length && i < command.Indices.Length; i++)
             {
                 Entity district = AreaRefs.Resolve(EntityManager, _prefabSystem, command.Districts[i]);
                 if (district == Entity.Null || !EntityManager.HasBuffer<RandomLocalizationIndex>(district))
                 {
+                    BaseGameLog.Warn("District name received for a district that isn't here (or has no name index)");
                     continue;
                 }
 
                 DynamicBuffer<RandomLocalizationIndex> buffer = EntityManager.GetBuffer<RandomLocalizationIndex>(district);
+                if (buffer.Length > 0 && buffer[0].m_Index == command.Indices[i])
+                {
+                    continue;
+                }
+
                 if (buffer.Length == 0)
                 {
                     buffer.Add(new RandomLocalizationIndex(command.Indices[i]));
@@ -113,7 +121,22 @@ namespace CS2M.BaseGame.Systems
                 {
                     buffer[0] = new RandomLocalizationIndex(command.Indices[i]);
                 }
+
+                // the name label on the map is only rebuilt for updated areas
+                if (!EntityManager.HasComponent<Updated>(district))
+                {
+                    EntityManager.AddComponent<Updated>(district);
+                }
+
+                if (!EntityManager.HasComponent<BatchesUpdated>(district))
+                {
+                    EntityManager.AddComponent<BatchesUpdated>(district);
+                }
+
+                applied++;
             }
+
+            BaseGameLog.Info($"District names received: {applied} of {command.Districts.Length} changed");
         }
     }
 }
