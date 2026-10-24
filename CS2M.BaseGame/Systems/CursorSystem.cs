@@ -21,7 +21,10 @@ namespace CS2M.BaseGame.Systems
         public class RemoteCursor
         {
             public string Name;
+            // Position is what's drawn; it glides towards Target, the last position received
             public float3 Position;
+            public float3 Target;
+            public bool Placed;
             public string Activity;
             public bool OnMap;
             public float LastSeen;
@@ -38,7 +41,7 @@ namespace CS2M.BaseGame.Systems
         /// </summary>
         public const float Timeout = 6f;
 
-        private const float SendInterval = 0.1f;
+        private const float SendInterval = 0.05f;
         private const float Heartbeat = 2f;
 
         private static readonly Color[] Palette =
@@ -74,6 +77,7 @@ namespace CS2M.BaseGame.Systems
             }
 
             DropStale();
+            Smooth();
 
             NativeArray<RaycastResult> results = _raycastSystem.GetResult(this);
             // no hit leaves the position at zero
@@ -143,10 +147,26 @@ namespace CS2M.BaseGame.Systems
             }
 
             cursor.Name = string.IsNullOrEmpty(command.Username) ? $"Player {command.SenderId}" : command.Username;
-            cursor.Position = new float3(command.X, command.Y, command.Z);
+            cursor.Target = new float3(command.X, command.Y, command.Z);
+            if (!cursor.Placed || !cursor.OnMap)
+            {
+                // first position, or coming back onto the map: jump there instead of sliding across
+                cursor.Position = cursor.Target;
+                cursor.Placed = true;
+            }
             cursor.Activity = command.Activity ?? "";
             cursor.OnMap = command.OnMap;
             cursor.LastSeen = UnityEngine.Time.realtimeSinceStartup;
+        }
+
+        private static void Smooth()
+        {
+            // frame-rate independent ease: covers ~90% of the gap in 0.15 s
+            float t = 1f - math.exp(-UnityEngine.Time.unscaledDeltaTime * 15f);
+            foreach (RemoteCursor cursor in Remote.Values)
+            {
+                cursor.Position = math.lerp(cursor.Position, cursor.Target, t);
+            }
         }
 
         private static void DropStale()

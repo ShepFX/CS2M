@@ -325,6 +325,12 @@ namespace CS2M.Networking
 
         public void SendToServer(CommandBase message)
         {
+            if (_netManager.ConnectedPeerList.Count == 0)
+            {
+                Log.Debug($"Not connected to the server, dropping {message.GetType().Name}");
+                return;
+            }
+
             NetPeer server = _netManager.ConnectedPeerList[0];
             server.Send(CommandInternal.Instance.Serialize(message), DeliveryMethod.ReliableOrdered);
 

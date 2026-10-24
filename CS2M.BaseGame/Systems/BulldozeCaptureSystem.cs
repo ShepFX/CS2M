@@ -98,6 +98,12 @@ namespace CS2M.BaseGame.Systems
 
         protected override void OnUpdate()
         {
+            // received while joining: wait until the city has loaded
+            if (Command.CurrentRole == MultiplayerRole.None)
+            {
+                return;
+            }
+
             while (Pending.TryDequeue(out BulldozeCommand command))
             {
                 int removed = 0, missing = 0;

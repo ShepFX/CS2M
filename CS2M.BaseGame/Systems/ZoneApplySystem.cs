@@ -32,7 +32,8 @@ namespace CS2M.BaseGame.Systems
 
         protected override void OnUpdate()
         {
-            if (Pending.IsEmpty)
+            // received while joining: wait until the city has loaded
+            if (Pending.IsEmpty || CS2M.API.Commands.Command.CurrentRole == CS2M.API.Commands.MultiplayerRole.None)
             {
                 return;
             }

@@ -83,6 +83,10 @@ namespace CS2M
             updateSystem.UpdateBefore<BulldozeCaptureSystem, ApplyNetSystem>(SystemUpdatePhase.ApplyTool);
             updateSystem.UpdateAfter<BulldozeApplySystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
             updateSystem.UpdateAfter<SpeedSyncSystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
+            // The host decides building spawns, level-ups, abandonment and money; joiners copy it
+            updateSystem.UpdateAfter<HostAuthoritySystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
+            updateSystem.UpdateBefore<SpawnCaptureSystem, GenerateObjectsSystem>(SystemUpdatePhase.Modification1);
+            updateSystem.UpdateBefore<ChargeCaptureSystem, ToolApplySystem>(SystemUpdatePhase.ApplyTool);
             // Other players' cursors: share ours, draw theirs as rings with name labels
             updateSystem.UpdateAfter<CursorSystem, ToolRaycastSystem>(SystemUpdatePhase.Raycast);
             updateSystem.UpdateBefore<CursorOverlaySystem, OverlayRenderSystem>(SystemUpdatePhase.Rendering);

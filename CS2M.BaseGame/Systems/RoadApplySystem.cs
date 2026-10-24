@@ -36,6 +36,12 @@ namespace CS2M.BaseGame.Systems
 
         protected override void OnUpdate()
         {
+            // received while joining: wait until the city has loaded
+            if (CS2M.API.Commands.Command.CurrentRole == CS2M.API.Commands.MultiplayerRole.None)
+            {
+                return;
+            }
+
             while (Pending.TryDequeue(out RoadCommand command))
             {
                 int built = 0;

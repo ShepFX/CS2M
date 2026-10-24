@@ -407,13 +407,22 @@ namespace CS2M.Networking
         public void PlayerStatusChanged(PlayerStatus oldPlayerStatus, PlayerStatus newPlayerStatus)
         {
             Log.Debug($"LocalPlayer: changed player status from {oldPlayerStatus} to {newPlayerStatus}");
+            UpdateRole();
         }
 
         public void PlayerTypeChanged(PlayerType oldPlayerType, PlayerType newPlayerType)
         {
             Log.Debug($"LocalPlayer: changed player type from {oldPlayerType} to {newPlayerType}");
-            // The BaseGame sync systems check this before sending anything
-            Command.CurrentRole = newPlayerType switch
+            UpdateRole();
+        }
+
+        /// <summary>
+        ///     The BaseGame sync systems only send and apply while this isn't None. A client only gets a role
+        ///     once it's playing: before that there's no connection to send on, and the city isn't loaded.
+        /// </summary>
+        private void UpdateRole()
+        {
+            Command.CurrentRole = PlayerStatus != PlayerStatus.PLAYING ? MultiplayerRole.None : PlayerType switch
             {
                 PlayerType.SERVER => MultiplayerRole.Server,
                 PlayerType.CLIENT => MultiplayerRole.Client,
