@@ -68,6 +68,7 @@ namespace CS2M.Networking
         {
             _connectionConfig = connectionConfig;
             Token = GenerateToken();
+            _secret = GenerateSecret();
             _endpoint = null;
             _queued.Clear();
             string apiServer = Mod.Instance.Settings.ApiServer;
@@ -91,8 +92,9 @@ namespace CS2M.Networking
                 return;
             }
 
-            SendCommand(new ServerUnregisterCommand { Token = Token });
+            SendCommand(new ServerUnregisterCommand { Token = Token, TokenSecret = _secret });
             Token = null;
+            _secret = null;
             _connectionConfig = null;
             _sinceKeepAlive.Reset();
             _queued.Clear();
@@ -235,6 +237,7 @@ namespace CS2M.Networking
             SendCommand(new SessionInfoCommand
             {
                 Token = Token,
+                TokenSecret = _secret,
                 LocalIp = localIp,
                 LocalPort = _connectionConfig.Port,
                 CityName = city?.cityName ?? "",
@@ -388,6 +391,20 @@ namespace CS2M.Networking
         {
             text = text?.Trim() ?? "";
             return text.Length <= length ? text : text.Substring(0, length);
+        }
+
+        // 32 random bytes, base64url without padding (43 characters), as the lobby expects
+        private string _secret;
+
+        private static string GenerateSecret()
+        {
+            byte[] bytes = new byte[32];
+            using (RandomNumberGenerator rng = RandomNumberGenerator.Create())
+            {
+                rng.GetBytes(bytes);
+            }
+
+            return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         }
 
         private static string GenerateToken()
