@@ -218,6 +218,15 @@ namespace CS2M.Networking
 
         public void SliceReceived(WorldTransferCommand cmd)
         {
+            // Resync: the host sends the city again while we're playing. Going back to downloading sets the
+            // multiplayer role to None, so the sync systems hold what arrives until the reloaded city is running.
+            if (cmd.NewTransfer && PlayerStatus == PlayerStatus.PLAYING && PlayerType == PlayerType.CLIENT)
+            {
+                Log.Info("Resync: the host is sending its city again");
+                PlayerStatus = PlayerStatus.DOWNLOADING_MAP;
+                _uiSystem.SetLoadProgress(0, 0);
+            }
+
             if (PlayerStatus != PlayerStatus.DOWNLOADING_MAP)
             {
                 Log.Warn("Received world slice, but not in downloading state");
