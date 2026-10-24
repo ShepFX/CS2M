@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Colossal;
@@ -45,6 +45,7 @@ namespace CS2M.Networking
             _networkManager.ClientConnectSuccessfulEvent += ConnectionEstablished;
             _networkManager.ClientConnectFailedEvent += ConnectionFailed;
             _networkManager.ClientDisconnectEvent += Inactive;
+            _networkManager.ClientSetupFailedEvent += SetupFailed;
 
             if (!_networkManager.InitConnect(connectionConfig))
             {
@@ -100,6 +101,13 @@ namespace CS2M.Networking
             return true;
         }
 
+        public bool SetupFailed()
+        {
+            _uiSystem.SetJoinErrors("CS2M.UI.JoinError.InvalidIP");
+            Inactive();
+            return true;
+        }
+
         public bool ConnectionFailed()
         {
             _uiSystem.SetJoinErrors("CS2M.UI.JoinError.FailedToConnect");
@@ -131,7 +139,16 @@ namespace CS2M.Networking
 
         public void PreconditionsError(PreconditionsErrorCommand command)
         {
+            // Only an answer to our own join request; never ends a session we're already in
+            if (PlayerType != PlayerType.CLIENT || PlayerStatus != PlayerStatus.CONNECTION_ESTABLISHED)
+            {
+                Log.Warn("Ignored a join error outside of joining");
+                return;
+            }
+
             Inactive();
+            command.DlcIds ??= new List<int>();
+            command.Mods ??= new List<string>();
             var errors = new List<string>();
             PreconditionsUtil.Errors err = command.Errors;
             if (err.HasFlag(PreconditionsUtil.Errors.GAME_VERSION_MISMATCH))
@@ -221,8 +238,27 @@ namespace CS2M.Networking
             return true;
         }
 
+        /// <summary>
+        ///     Largest city we accept from a host.
+        /// </summary>
+        private const long MaxWorldBytes = 1024L * 1024 * 1024;
+
+        // the size the first slice announced (its length plus RemainingBytes)
+        private long _expectedWorldBytes;
+
         public void SliceReceived(WorldTransferCommand cmd)
         {
+            if (PlayerType != PlayerType.CLIENT)
+            {
+                return;
+            }
+
+            if (cmd.WorldSlice == null || cmd.RemainingBytes < 0 || (cmd.NewTransfer && cmd.WorldSlice.Length == 0))
+            {
+                Log.Warn("Received an invalid world slice");
+                return;
+            }
+
             // Resync: the host sends the city again while we're playing. Going back to downloading sets the
             // multiplayer role to None, so the sync systems hold what arrives until the reloaded city is running.
             if (cmd.NewTransfer && PlayerStatus == PlayerStatus.PLAYING && PlayerType == PlayerType.CLIENT)
@@ -240,11 +276,31 @@ namespace CS2M.Networking
 
             if (cmd.NewTransfer)
             {
+                _expectedWorldBytes = (long)cmd.WorldSlice.Length + cmd.RemainingBytes;
+                if (_expectedWorldBytes > MaxWorldBytes)
+                {
+                    Log.Warn($"The host's city is {_expectedWorldBytes} bytes, more than the {MaxWorldBytes} allowed");
+                    _packetStream = null;
+                    _uiSystem.SetJoinErrors("CS2M.JoinError.DownloadFailed");
+                    Inactive();
+                    return;
+                }
+
                 _packetStream = new SlicedPacketStream(cmd.WorldSlice.Length);
             }
             else if (_packetStream == null)
             {
                 Log.Warn("Received world slice without initialized packet stream");
+                _uiSystem.SetJoinErrors("CS2M.JoinError.DownloadFailed");
+                Inactive();
+                return;
+            }
+
+            // every slice must add up to what the first one announced
+            if (_packetStream.Length + cmd.WorldSlice.Length + cmd.RemainingBytes != _expectedWorldBytes)
+            {
+                Log.Warn("Received a world slice that doesn't fit the transfer");
+                _packetStream = null;
                 _uiSystem.SetJoinErrors("CS2M.JoinError.DownloadFailed");
                 Inactive();
                 return;

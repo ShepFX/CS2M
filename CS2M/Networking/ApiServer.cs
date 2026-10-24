@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Security.Cryptography;
+using System.Threading.Tasks;
 using Game.City;
 using Game.Simulation;
 using Unity.Entities;
@@ -40,6 +41,16 @@ namespace CS2M.Networking
         private ConnectionConfig _connectionConfig;
         private IPEndPoint _endpoint;
 
+        // The name lookup and the adapter scan block, so they run in the background; commands sent before the
+        // lookup is done wait in _queued. The local address is looked up again every few minutes.
+        private const int LocalIpRefreshSeconds = 300;
+        private const int MaxQueued = 32;
+        private Task<IPEndPoint> _resolveTask;
+        private Task<string> _localIpTask;
+        private string _localIp;
+        private readonly Stopwatch _sinceLocalIp = new Stopwatch();
+        private readonly List<ApiCommandBase> _queued = new List<ApiCommandBase>();
+
         /// <summary>
         ///     The token joiners use to find this server, while it's registered.
         /// </summary>
@@ -58,9 +69,15 @@ namespace CS2M.Networking
             _connectionConfig = connectionConfig;
             Token = GenerateToken();
             _endpoint = null;
+            _queued.Clear();
+            string apiServer = Mod.Instance.Settings.ApiServer;
+            int apiPort = Mod.Instance.Settings.GetApiServerPort();
+            _resolveTask = Task.Run(() => IPUtil.CreateIP4EndPoint(apiServer, apiPort));
+            RefreshLocalIp();
             EnabledMods.RefreshPlayset(true);
             Log.Info($"Registering the server with the API server as {Token}");
-            SendKeepAlive();
+            // the first keep-alive goes out from KeepAlive once the address lookups are done
+            _sinceKeepAlive.Reset();
             SendCommand(new PortCheckRequestCommand { Port = connectionConfig.Port });
         }
 
@@ -78,6 +95,7 @@ namespace CS2M.Networking
             Token = null;
             _connectionConfig = null;
             _sinceKeepAlive.Reset();
+            _queued.Clear();
         }
 
         /// <summary>
@@ -94,11 +112,18 @@ namespace CS2M.Networking
         /// <param name="message"></param>
         public void SendCommand(ApiCommandBase message)
         {
+            if (!EndpointReady())
+            {
+                if (_resolveTask != null && _queued.Count < MaxQueued)
+                {
+                    _queued.Add(message);
+                }
+
+                return;
+            }
+
             try
             {
-                // Resolved once per server start, as the lookup blocks the game
-                _endpoint ??= IPUtil.CreateIP4EndPoint(Mod.Instance.Settings.ApiServer,
-                    Mod.Instance.Settings.GetApiServerPort());
                 _netManager.SendUnconnectedMessage(ApiCommand.Instance.Serialize(message), _endpoint);
                 Log.Debug(
                     $"Sending {message.GetType().Name} to API server at {Mod.Instance.Settings.ApiServer}:{Mod.Instance.Settings.ApiServerPort}");
@@ -110,9 +135,89 @@ namespace CS2M.Networking
             }
         }
 
+        /// <summary>
+        ///     Whether the API server's address is known. Picks up the background lookup once it's done.
+        /// </summary>
+        private bool EndpointReady()
+        {
+            if (_endpoint != null)
+            {
+                return true;
+            }
+
+            if (_resolveTask == null || !_resolveTask.IsCompleted)
+            {
+                return false;
+            }
+
+            Task<IPEndPoint> task = _resolveTask;
+            _resolveTask = null;
+            if (task.Status == TaskStatus.RanToCompletion && task.Result != null && task.Result.Address != null)
+            {
+                _endpoint = task.Result;
+                return true;
+            }
+
+            Log.Warn($"Could not resolve the API server {Mod.Instance?.Settings?.ApiServer}: the server won't be listed");
+            _queued.Clear();
+            return false;
+        }
+
+        private void RefreshLocalIp()
+        {
+            if (_localIpTask != null)
+            {
+                return;
+            }
+
+            _sinceLocalIp.Restart();
+            _localIpTask = Task.Run(() =>
+            {
+                string localIp = NetUtils.GetLocalIp(LocalAddrType.IPv4);
+                if (string.IsNullOrEmpty(localIp))
+                {
+                    localIp = NetUtils.GetLocalIp(LocalAddrType.IPv6);
+                }
+
+                return localIp;
+            });
+        }
+
         public void KeepAlive()
         {
-            if (Token != null && _sinceKeepAlive.Elapsed.TotalSeconds >= KeepAliveSeconds)
+            if (_localIpTask != null && _localIpTask.IsCompleted)
+            {
+                if (_localIpTask.Status == TaskStatus.RanToCompletion)
+                {
+                    _localIp = _localIpTask.Result;
+                }
+
+                _localIpTask = null;
+            }
+            else if (_localIpTask == null && Token != null && _sinceLocalIp.Elapsed.TotalSeconds >= LocalIpRefreshSeconds)
+            {
+                RefreshLocalIp();
+            }
+
+            if (Token == null || !EndpointReady())
+            {
+                return;
+            }
+
+            if (_queued.Count > 0)
+            {
+                List<ApiCommandBase> queued = new List<ApiCommandBase>(_queued);
+                _queued.Clear();
+                foreach (ApiCommandBase message in queued)
+                {
+                    SendCommand(message);
+                }
+            }
+
+            bool first = !_sinceKeepAlive.IsRunning;
+            // the first one waits (briefly) for the local address, so LAN players can find the server
+            if ((first && (_localIp != null || _localIpTask == null || _sinceLocalIp.Elapsed.TotalSeconds > 3)) ||
+                (!first && _sinceKeepAlive.Elapsed.TotalSeconds >= KeepAliveSeconds))
             {
                 SendKeepAlive();
             }
@@ -122,11 +227,7 @@ namespace CS2M.Networking
         {
             _sinceKeepAlive.Restart();
 
-            string localIp = NetUtils.GetLocalIp(LocalAddrType.IPv4);
-            if (string.IsNullOrEmpty(localIp))
-            {
-                localIp = NetUtils.GetLocalIp(LocalAddrType.IPv6);
-            }
+            string localIp = _localIp ?? "";
 
             CityConfigurationSystem city =
                 World.DefaultGameObjectInjectionWorld?.GetExistingSystemManaged<CityConfigurationSystem>();
