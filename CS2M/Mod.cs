@@ -1,5 +1,6 @@
 ﻿using System.Reflection;
 using Colossal.IO.AssetDatabase;
+using CS2M.BaseGame.Systems;
 using CS2M.Commands;
 using CS2M.Commands.ApiServer;
 using CS2M.Mods;
@@ -8,6 +9,7 @@ using CS2M.Settings;
 using CS2M.UI;
 using Game;
 using Game.Modding;
+using Game.Tools;
 using HarmonyLib;
 using LiteNetLib;
 
@@ -69,6 +71,9 @@ namespace CS2M
             // Set up systems
             updateSystem.UpdateBefore<NetworkingSystem>(SystemUpdatePhase.PreSimulation);
             updateSystem.UpdateAt<UISystem>(SystemUpdatePhase.UIUpdate);
+            // Zoning: capture on the frame the zone tool applies, apply what other players send
+            updateSystem.UpdateBefore<ZoneCaptureSystem, ApplyZonesSystem>(SystemUpdatePhase.ApplyTool);
+            updateSystem.UpdateAfter<ZoneApplySystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
             Log.Info("Loading complete");
         }
 

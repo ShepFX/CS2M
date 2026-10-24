@@ -412,6 +412,13 @@ namespace CS2M.Networking
         public void PlayerTypeChanged(PlayerType oldPlayerType, PlayerType newPlayerType)
         {
             Log.Debug($"LocalPlayer: changed player type from {oldPlayerType} to {newPlayerType}");
+            // The BaseGame sync systems check this before sending anything
+            Command.CurrentRole = newPlayerType switch
+            {
+                PlayerType.SERVER => MultiplayerRole.Server,
+                PlayerType.CLIENT => MultiplayerRole.Client,
+                _ => MultiplayerRole.None
+            };
         }
     }
 }
