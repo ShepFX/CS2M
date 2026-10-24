@@ -100,6 +100,10 @@ namespace CS2M
             updateSystem.UpdateAfter<NetDiffApplySystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
             // Buildings and props placed with the object tool; taxes, budgets and the host's population
             updateSystem.UpdateBefore<PlaceCaptureSystem, ApplyObjectsSystem>(SystemUpdatePhase.ApplyTool);
+            // buildings finished by the area tool (drawn lots, e.g. landfill): sent from the applied result
+            updateSystem.UpdateBefore<LotBuildingMarkerSystem, ApplyObjectsSystem>(SystemUpdatePhase.ApplyTool);
+            updateSystem.UpdateAfter<LotBuildingCaptureSystem, ToolOutputBarrier>(SystemUpdatePhase.ToolUpdate);
+            updateSystem.UpdateBefore<LotBuildingCaptureSystem, AreaCaptureSystem>(SystemUpdatePhase.ToolUpdate);
             updateSystem.UpdateAfter<PlaceApplySystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
             updateSystem.UpdateAfter<EconomySyncSystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
             updateSystem.UpdateBefore<PopulationDisplaySystem, Game.UI.InGame.ToolbarBottomUISystem>(SystemUpdatePhase.UIUpdate);

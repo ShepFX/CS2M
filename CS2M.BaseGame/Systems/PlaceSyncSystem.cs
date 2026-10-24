@@ -206,6 +206,9 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class PlaceCaptureSystem : GameSystemBase
     {
+        /// <summary>Set when this frame's placement went out from definitions (read and reset by LotBuildingCaptureSystem).</summary>
+        public static bool SentThisFrame;
+
 
         private EntityQuery _definitions;
         private ToolSystem _toolSystem;
@@ -224,11 +227,8 @@ namespace CS2M.BaseGame.Systems
 
         protected override void OnUpdate()
         {
-            // buildings with a drawn lot (landfill and the like) are finished by the area tool, which creates
-            // the building and its lot together; area-only edits with that tool stay with the area sync
-            bool areaTool = _toolSystem.activeTool is AreaToolSystem;
             if (Command.CurrentRole == MultiplayerRole.None || Command.SendToAll == null ||
-                !(_toolSystem.activeTool is ObjectToolSystem || areaTool))
+                !(_toolSystem.activeTool is ObjectToolSystem))
             {
                 return;
             }
@@ -245,7 +245,7 @@ namespace CS2M.BaseGame.Systems
                 }
             }
 
-            if (definitions.Count == 0 || (areaTool && !definitions.Exists(d => d.Object != null && !d.HasOwnerDefinition)))
+            if (definitions.Count == 0)
             {
                 return;
             }
@@ -263,6 +263,7 @@ namespace CS2M.BaseGame.Systems
             _lastKey = key;
             _lastTime = now;
             Command.SendToAll(new PlaceCommand { Definitions = definitions.ToArray() });
+            SentThisFrame = true;
             BaseGameLog.Info($"Placement sent: {main.Prefab} with {definitions.Count - 1} part(s)");
         }
     }

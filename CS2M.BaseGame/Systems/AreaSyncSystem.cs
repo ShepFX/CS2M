@@ -172,6 +172,12 @@ namespace CS2M.BaseGame.Systems
 
                     if (isCreated)
                     {
+                        // a building sent from the result this frame took its new areas with it
+                        if (LotBuildingCaptureSystem.SentThisFrame)
+                        {
+                            continue;
+                        }
+
                         if (EntityManager.HasComponent<Applied>(entity))
                         {
                             AreaDataCmd data = Describe(entity, owner);
