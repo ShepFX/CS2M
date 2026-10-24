@@ -1,0 +1,85 @@
+.browser {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 16rem;
+}
+
+.header, .row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 4rem 8rem;
+}
+
+.header {
+    opacity: 0.7;
+    font-size: 12rem;
+    text-transform: uppercase;
+}
+
+.list {
+    max-height: 300rem;
+    overflow-y: auto;
+}
+
+.row {
+    min-height: 32rem;
+    border-radius: 4rem;
+    background-color: rgba(255, 255, 255, 0.04);
+    margin-bottom: 2rem;
+    font-size: 14rem;
+}
+
+.row:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.city {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.host {
+    width: 140rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.players {
+    width: 60rem;
+    text-align: center;
+}
+
+.lock {
+    width: 14rem;
+    height: 14rem;
+    margin-right: 6rem;
+}
+
+.button {
+    width: 72rem;
+    height: 24rem;
+    border-radius: 4rem;
+    background-color: rgba(255, 255, 255, 0.12);
+    color: white;
+    font-size: 12rem;
+}
+
+.button:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.button:disabled {
+    opacity: 0.4;
+}
+
+.message {
+    padding: 8rem;
+    opacity: 0.7;
+    font-size: 13rem;
+}

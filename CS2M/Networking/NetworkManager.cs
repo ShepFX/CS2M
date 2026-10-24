@@ -51,6 +51,7 @@ namespace CS2M.Networking
             listener.PeerDisconnectedEvent += ListenerOnPeerDisconnectedEvent;
             listener.NetworkLatencyUpdateEvent += ListenerOnNetworkLatencyUpdateEvent;
             listener.ConnectionRequestEvent += ListenerOnConnectionRequestEvent;
+            listener.NetworkReceiveUnconnectedEvent += ListenerOnNetworkReceiveUnconnectedEvent;
         }
 
         public bool InitConnect(ConnectionConfig connectionConfig)
@@ -133,7 +134,8 @@ namespace CS2M.Networking
             }
             else if (directEndpoint != null)
             {
-                connect = "ip:" + directEndpoint.Address;
+                // With the port, so the API server can tell apart two hosts behind the same address
+                connect = "ip:" + directEndpoint;
             }
 
             // Register listener and send request to global server
@@ -272,6 +274,27 @@ namespace CS2M.Networking
             Log.Trace($"NetworkManager: OnNetworkLatencyUpdateEvent [PeerId: {peer.Id}, Latency: {latency}]");
         }
 
+        private void ListenerOnNetworkReceiveUnconnectedEvent(IPEndPoint remoteEndPoint, NetPacketReader reader,
+            UnconnectedMessageType messageType)
+        {
+            // Only the API server talks to us this way (the port check result)
+            if (messageType != UnconnectedMessageType.BasicMessage || !_apiServer.IsApiServer(remoteEndPoint))
+            {
+                return;
+            }
+
+            try
+            {
+                ApiCommandBase command = ApiCommand.Instance.Deserialize(reader.GetRemainingBytes());
+                Log.Debug($"Received {command.GetType().Name} from API server");
+                ApiCommand.Instance.GetApiCommandHandler(command.GetType())?.Parse(command);
+            }
+            catch (Exception e)
+            {
+                Log.Warn($"Could not read message from API server: {e.Message}");
+            }
+        }
+
         private void ListenerOnConnectionRequestEvent(ConnectionRequest request)
         {
             Log.Trace("NetworkManager: OnConnectionRequestEvent");
@@ -298,7 +321,7 @@ namespace CS2M.Networking
 
             _netManager.PollEvents();
             // Trigger keepalive to api server
-            _apiServer.KeepAlive(_connectionConfig);
+            _apiServer.KeepAlive();
         }
 
         public void SendToAllClients(CommandBase message)
@@ -362,17 +385,25 @@ namespace CS2M.Networking
             }
 
             //TODO: NAT UPnP open Port
-            //TODO: Check if port is reachable
 
             // Update the console to let the user know the server is running
             Log.Info("The server has started.");
             Chat.Instance.PrintGameMessage("CS2M.NetworkManager.ServerStarted".Translate());
+
+            // The host punches back by itself when the API server introduces a joiner. The listener and polling
+            // only drain the module's event queue, which would otherwise grow with every join.
+            _netManager.NatPunchModule.Init(new EventBasedNatPunchListener());
+            _pollNatEvent = true;
+
+            // Register with the API server (server browser, joining by token) and check the port from outside
+            _apiServer.Start(_connectionConfig);
 
             return true;
         }
 
         public void Stop()
         {
+            _apiServer.Stop();
             _netManager.Stop();
             Log.Info("NetworkManager stopped.");
         }
