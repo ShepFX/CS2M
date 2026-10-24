@@ -20,7 +20,8 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class LotBuildingMarkerSystem : GameSystemBase
     {
-        public static bool AreaToolApplied;
+        public static bool ToolApplied;
+
         private ToolSystem _toolSystem;
 
         protected override void OnCreate()
@@ -31,9 +32,10 @@ namespace CS2M.BaseGame.Systems
 
         protected override void OnUpdate()
         {
-            if (PlaceCaptureSystem.ApplyingTool(_toolSystem) is AreaToolSystem || PlaceCaptureSystem.ApplyingTool(_toolSystem) is ObjectToolSystem)
+            ToolBaseSystem tool = PlaceCaptureSystem.ApplyingTool(_toolSystem);
+            if (tool is AreaToolSystem || tool is ObjectToolSystem)
             {
-                AreaToolApplied = true;
+                ToolApplied = true;
             }
         }
     }
@@ -70,8 +72,8 @@ namespace CS2M.BaseGame.Systems
 
         protected override void OnUpdate()
         {
-            bool applied = LotBuildingMarkerSystem.AreaToolApplied;
-            LotBuildingMarkerSystem.AreaToolApplied = false;
+            bool applied = LotBuildingMarkerSystem.ToolApplied;
+            LotBuildingMarkerSystem.ToolApplied = false;
             bool alreadySent = PlaceCaptureSystem.SentThisFrame;
             PlaceCaptureSystem.SentThisFrame = false;
             SentThisFrame = false;

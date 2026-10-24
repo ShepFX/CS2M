@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using CS2M.API.Commands;
 using CS2M.BaseGame.Commands;
@@ -12,7 +11,6 @@ using Game.Simulation;
 using Game.Tools;
 using Unity.Collections;
 using Unity.Entities;
-using Unity.Mathematics;
 
 namespace CS2M.BaseGame.Systems
 {
@@ -328,8 +326,8 @@ namespace CS2M.BaseGame.Systems
                 m_Position = NetRefs.V3(spawn.Position),
                 m_LocalPosition = NetRefs.V3(spawn.LocalPosition),
                 m_Scale = NetRefs.V3(spawn.Scale),
-                m_Rotation = Q(spawn.Rotation),
-                m_LocalRotation = Q(spawn.LocalRotation),
+                m_Rotation = Definitions.Q(spawn.Rotation),
+                m_LocalRotation = Definitions.Q(spawn.LocalRotation),
                 m_Elevation = spawn.Elevation,
                 m_Intensity = spawn.Intensity,
                 m_Age = spawn.Age,
@@ -388,8 +386,5 @@ namespace CS2M.BaseGame.Systems
                 EntityManager.AddComponent<Updated>(building);
             }
         }
-
-        private static quaternion Q(float[] q) =>
-            q != null && q.Length >= 4 ? new quaternion(q[0], q[1], q[2], q[3]) : quaternion.identity;
     }
 }

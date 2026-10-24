@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
 using CS2M.API.Commands;
@@ -22,9 +21,8 @@ namespace CS2M.BaseGame.Systems
 
         private const float CheckInterval = 0.5f;
 
-        /// <summary>The service budget slider's range in the game's budget panel, in percent.</summary>
+        // the service budget slider's range in the game's budget panel, in percent
         public const int MinBudget = 50;
-
         public const int MaxBudget = 150;
 
         // TaxSystem keeps every rate in one private NativeArray<int>

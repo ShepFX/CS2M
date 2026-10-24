@@ -16,6 +16,9 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class BulldozeCaptureSystem : GameSystemBase
     {
+        // the same removal seen again within this time is not sent twice
+        private const float RepeatWindow = 0.5f;
+
         private EntityQuery _temps;
         private ToolSystem _toolSystem;
         private PrefabSystem _prefabSystem;
@@ -68,7 +71,7 @@ namespace CS2M.BaseGame.Systems
 
             string key = string.Join(";", targets.ConvertAll(t => t.Kind + string.Join(",", t.A)));
             float now = UnityEngine.Time.realtimeSinceStartup;
-            if (key == _lastKey && now - _lastTime < 0.5f)
+            if (key == _lastKey && now - _lastTime < RepeatWindow)
             {
                 return;
             }

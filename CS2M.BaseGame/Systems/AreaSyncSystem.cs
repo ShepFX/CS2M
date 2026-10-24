@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using CS2M.API.Commands;
 using CS2M.BaseGame.Commands;
@@ -117,7 +116,6 @@ namespace CS2M.BaseGame.Systems
 
         private void Capture()
         {
-
             bool bulldozer = AreaApplyMarkerSystem.ByBulldozer;
             var deleted = new List<AreaKey>();
             var updated = new List<AreaUpdate>();
@@ -347,21 +345,12 @@ namespace CS2M.BaseGame.Systems
 
                         // generated sub-areas (Slave) copy their owner's outline only when they are Updated
                         // themselves (GeometrySystem); on the sender ApplyAreasSystem updates them via their Temps
-                        if (EntityManager.HasBuffer<SubArea>(area))
+                        foreach (Entity child in SubAreas(area))
                         {
-                            var children = new List<Entity>();
-                            foreach (SubArea subArea in EntityManager.GetBuffer<SubArea>(area, true))
+                            if (EntityManager.Exists(child) && EntityManager.HasComponent<Area>(child) &&
+                                (EntityManager.GetComponentData<Area>(child).m_Flags & AreaFlags.Slave) != 0)
                             {
-                                children.Add(subArea.m_Area);
-                            }
-
-                            foreach (Entity child in children)
-                            {
-                                if (EntityManager.Exists(child) && EntityManager.HasComponent<Area>(child) &&
-                                    (EntityManager.GetComponentData<Area>(child).m_Flags & AreaFlags.Slave) != 0)
-                                {
-                                    MarkUpdated(child);
-                                }
+                                MarkUpdated(child);
                             }
                         }
 
@@ -484,26 +473,31 @@ namespace CS2M.BaseGame.Systems
                 return;
             }
 
-            if (EntityManager.HasBuffer<SubArea>(area))
+            foreach (Entity child in SubAreas(area))
             {
-                DynamicBuffer<SubArea> subAreas = EntityManager.GetBuffer<SubArea>(area, true);
-                var children = new List<Entity>();
-                foreach (SubArea subArea in subAreas)
+                if (EntityManager.Exists(child))
                 {
-                    children.Add(subArea.m_Area);
-                }
-
-                foreach (Entity child in children)
-                {
-                    if (EntityManager.Exists(child))
-                    {
-                        Delete(child);
-                    }
+                    Delete(child);
                 }
             }
 
             Received.Add(area);
             EntityManager.AddComponent<Deleted>(area);
+        }
+
+        // copied out first: marking or deleting a child changes its structure and invalidates the buffer
+        private List<Entity> SubAreas(Entity area)
+        {
+            var children = new List<Entity>();
+            if (EntityManager.HasBuffer<SubArea>(area))
+            {
+                foreach (SubArea subArea in EntityManager.GetBuffer<SubArea>(area, true))
+                {
+                    children.Add(subArea.m_Area);
+                }
+            }
+
+            return children;
         }
 
         private void SetCache(Entity area, AreaDataCmd data)

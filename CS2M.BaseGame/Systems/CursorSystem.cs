@@ -59,7 +59,7 @@ namespace CS2M.BaseGame.Systems
             "", "zoning", "roads", "bulldozing", "placing", "areas", "transit lines", "terrain", "upgrading", "in menu", "away"
         };
 
-        // names a remote player may not show up as: the mod's own messages use it
+        // a name a remote player may not show up as: the mod's own chat messages use it
         private const string ReservedName = "CS2M";
 
         private const float SendInterval = 0.05f;
@@ -218,6 +218,7 @@ namespace CS2M.BaseGame.Systems
                 cursor.Position = cursor.Target;
                 cursor.Placed = true;
             }
+
             cursor.OnMap = command.OnMap;
             cursor.LastSeen = UnityEngine.Time.realtimeSinceStartup;
             if (joined)
@@ -227,9 +228,9 @@ namespace CS2M.BaseGame.Systems
         }
 
         /// <summary>
-        ///     The name to show for a remote player: control and format characters removed, at most 32
-        ///     characters, and never "CS2M" or the local player's own name (it would look like a message from
-        ///     the mod or from us).
+        ///     The name to show for a remote player: control and format characters removed, at most
+        ///     <see cref="MaxNameLength"/> characters, and never <see cref="ReservedName"/> or the local player's
+        ///     own name (it would look like a message from the mod or from the local player).
         /// </summary>
         private static string SafeName(string username, int senderId)
         {

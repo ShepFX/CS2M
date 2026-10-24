@@ -27,13 +27,12 @@ namespace CS2M.BaseGame.Systems
             typeof(CityServiceBudgetSystem).GetField("m_Expenses", BindingFlags.Instance | BindingFlags.NonPublic);
         private static readonly FieldInfo DepsField =
             typeof(CityServiceBudgetSystem).GetField("m_TempArrayDeps", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly FieldInfo FeesField =
+            typeof(ServiceFeeSystem).GetField("m_CityServiceFees", BindingFlags.Instance | BindingFlags.NonPublic);
 
         public static BudgetFiguresCommand Latest;
         private static readonly Dictionary<string, int> HostUpkeep = new Dictionary<string, int>();
         private static PrefabSystem _prefabs;
-
-        private static readonly FieldInfo FeesField =
-            typeof(ServiceFeeSystem).GetField("m_CityServiceFees", BindingFlags.Instance | BindingFlags.NonPublic);
 
         private CityServiceBudgetSystem _budgetSystem;
         private ServiceFeeSystem _feeSystem;
@@ -171,8 +170,8 @@ namespace CS2M.BaseGame.Systems
             });
         }
 
-        // The fee list is rebuilt from the joiner's own fee collectors whenever ServiceFeeSystem updates; the host's
-        // replaces it until then, so the fee lines of the service rows match
+        // ServiceFeeSystem rebuilds the fee list from the joiner's own fee collectors whenever it updates; the
+        // host's list replaces it until then, so the fee lines of the service rows match the host's
         private void CopyFees(BudgetFiguresCommand command)
         {
             if (command.FeeResources == null || command.FeeValues == null ||

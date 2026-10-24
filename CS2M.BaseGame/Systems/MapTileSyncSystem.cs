@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using CS2M.API.Commands;
 using CS2M.BaseGame.Commands;
@@ -190,7 +189,6 @@ namespace CS2M.BaseGame.Systems
             }
 
             // the same checks the purchase button makes here: expansion permits and money
-            Entity city = _citySystem.City;
             if (locked.Count > _purchaseSystem.GetAvailableTiles())
             {
                 BaseGameLog.Warn($"Map tile request refused: {locked.Count} tiles, not enough permits");
@@ -205,6 +203,7 @@ namespace CS2M.BaseGame.Systems
                 BaseGameLog.Info($"Map tile request: the joiner's panel said {request.Cost}, charging the host's price {cost}");
             }
 
+            Entity city = _citySystem.City;
             if (city != Entity.Null && EntityManager.HasComponent<PlayerMoney>(city))
             {
                 PlayerMoney money = EntityManager.GetComponentData<PlayerMoney>(city);
