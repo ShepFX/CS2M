@@ -58,7 +58,7 @@ namespace CS2M
             AssetDatabase.global.LoadSettings(Name, Settings, new ModSettings(this));
             if (Settings.Migrate())
             {
-                Log.Info($"Moved the API server setting to {Settings.ApiServer}:{Settings.ApiServerPort}");
+                Log.Info($"Updated outdated saved settings (API server {Settings.ApiServer}:{Settings.ApiServerPort})");
                 Settings.ApplyAndSave();
             }
             Settings.OnSetLoggingLevel(Settings.LoggingLevel);
@@ -100,7 +100,7 @@ namespace CS2M
             updateSystem.UpdateAfter<NetDiffApplySystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
             // Buildings and props placed with the object tool; taxes, budgets and the host's population
             updateSystem.UpdateBefore<PlaceCaptureSystem, ApplyObjectsSystem>(SystemUpdatePhase.ApplyTool);
-            // buildings finished by the area tool (drawn lots, e.g. landfill): sent from the applied result
+            // Buildings finished by the area tool (drawn lots, e.g. landfill): sent from the applied result
             updateSystem.UpdateBefore<LotBuildingMarkerSystem, ApplyObjectsSystem>(SystemUpdatePhase.ApplyTool);
             updateSystem.UpdateAfter<LotBuildingCaptureSystem, ToolOutputBarrier>(SystemUpdatePhase.ToolUpdate);
             updateSystem.UpdateBefore<LotBuildingCaptureSystem, AreaCaptureSystem>(SystemUpdatePhase.ToolUpdate);
@@ -108,13 +108,13 @@ namespace CS2M
             updateSystem.UpdateAfter<EconomySyncSystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
             updateSystem.UpdateBefore<PopulationDisplaySystem, Game.UI.InGame.ToolbarBottomUISystem>(SystemUpdatePhase.UIUpdate);
             updateSystem.UpdateAfter<ColorSyncSystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
-            // the host's budget figures, written in before the budget panel and the top bar's money trend read them
+            // The host's budget figures, written in before the budget panel and the top bar's money trend read them
             updateSystem.UpdateBefore<BudgetFiguresSystem, Game.UI.InGame.BudgetUISystem>(SystemUpdatePhase.UIUpdate);
             // Other players' cursors: share ours, draw theirs as rings with name labels
             updateSystem.UpdateAfter<CursorSystem, ToolRaycastSystem>(SystemUpdatePhase.Raycast);
             updateSystem.UpdateBefore<CursorOverlaySystem, OverlayRenderSystem>(SystemUpdatePhase.Rendering);
             updateSystem.UpdateAt<CursorUISystem>(SystemUpdatePhase.UIUpdate);
-            // Feature batch: each registers its own systems
+            // Each feature registers its own systems
             CS2M.BaseGame.Features.RoadUpgradesFeature.Register(updateSystem);
             CS2M.BaseGame.Features.AreasPoliciesFeature.Register(updateSystem);
             CS2M.BaseGame.Features.TransitLinesFeature.Register(updateSystem);

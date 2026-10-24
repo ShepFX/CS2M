@@ -133,7 +133,7 @@ namespace CS2M.Mods
                         }
                         catch (Exception)
                         {
-                            // no meta for this asset: listed by its assembly name
+                            // No meta for this asset: listed by its assembly name
                         }
 
                         if (info.instances.Any(instance => instance?.GetType() == typeof(Mod)))

@@ -107,7 +107,7 @@ namespace CS2M.Networking
 
             if (_entries.Count >= MaxAddresses)
             {
-                // still full of live entries: drop the oldest windows rather than grow without bound
+                // Still full of live entries: drop the oldest windows rather than grow without bound
                 foreach (string key in _entries.OrderBy(pair => pair.Value.WindowStart).Take(MaxAddresses / 4)
                              .Select(pair => pair.Key).ToList())
                 {

@@ -1,4 +1,4 @@
-using CS2M.API.Commands;
+﻿using CS2M.API.Commands;
 using CS2M.Commands.Data.Internal;
 using CS2M.Networking;
 

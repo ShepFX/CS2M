@@ -48,6 +48,8 @@ namespace CS2M.UI
         private (string Status, string Json)? _lobbyResult;
         private const int MaxLobbyResponse = 4 * 1024 * 1024;
         private static readonly Regex SessionToken = new Regex("^[A-Za-z0-9_-]{4,64}$");
+
+        // In-game HUD
         private ValueBinding<bool> _hudCollapsed;
         private ValueBinding<string> _disconnectNotice;
         private ValueBinding<bool> _isHost;
@@ -56,7 +58,7 @@ namespace CS2M.UI
         private ValueBinding<string> _localMods;
         private ValueBinding<string> _recentSessions;
         private ValueBinding<int> _hostMaxPlayers;
-        // passwords are kept for this game run only, never saved
+        // Passwords are kept for this game run only, never saved
         private ValueBinding<string> _hostPassword;
         private ValueBinding<string> _joinPassword;
         private RecentSessions.Entry _pendingRecent;
@@ -145,7 +147,7 @@ namespace CS2M.UI
             AddBinding(new TriggerBinding<string>(Mod.Name, "SetUsername",
                 username =>
                 {
-                    // no trimming while typing (spaces between words); the host checks the name on join
+                    // No trimming while typing (spaces between words); the host checks the name on join
                     username = new string((username ?? "").Where(c => !char.IsControl(c)).ToArray());
                     _username.Update(username.Length <= TextRules.MaxUsernameLength
                         ? username
@@ -185,7 +187,7 @@ namespace CS2M.UI
             AddBinding(_recentSessions = new ValueBinding<string>(Mod.Name, "RecentSessions",
                 RecentSessions.ToJson(RecentSessions.Load(settings?.RecentSessions))));
             AddBinding(_username = new ValueBinding<string>(Mod.Name, "Username", settings?.LastUsername ?? ""));
-            // kick/ban from the HUD (host only); the kicked player sees the reason once
+            // Kick/ban from the HUD (host only); the kicked player sees the reason once
             AddBinding(new TriggerBinding<int, bool>(Mod.Name, "KickPlayer", (id, ban) =>
             {
                 string name = NetworkInterface.Instance.Kick(id, ban);
@@ -202,7 +204,7 @@ namespace CS2M.UI
             }));
             AddBinding(_disconnectNotice = new ValueBinding<string>(Mod.Name, "DisconnectNotice", ""));
             AddBinding(_isHost = new ValueBinding<bool>(Mod.Name, "IsHost", false));
-            // multiplayer HUD hidden/shown, remembered between games
+            // Multiplayer HUD hidden/shown, remembered between games
             AddBinding(_hudCollapsed = new ValueBinding<bool>(Mod.Name, "HudCollapsed", settings?.HudCollapsed ?? false));
             AddBinding(new TriggerBinding<bool>(Mod.Name, "SetHudCollapsed", collapsed =>
             {
@@ -291,8 +293,8 @@ namespace CS2M.UI
         ///     Joins a session from the server browser, through the API server's NAT introduction.
         /// </summary>
         /// <param name="token">The session's lobby token.</param>
-        /// <param name="cityName">City and host as listed, only for the Recent tab.</param>
-        /// <param name="hostName"></param>
+        /// <param name="cityName">The city as listed, only for the Recent tab.</param>
+        /// <param name="hostName">The host as listed, only for the Recent tab.</param>
         private void JoinSession(string token, string cityName, string hostName)
         {
             if (token == null || !SessionToken.IsMatch(token))
@@ -306,7 +308,7 @@ namespace CS2M.UI
             {
                 Token = token,
                 Name = Clean(cityName, 64),
-                Host = Clean(hostName, 32)
+                Host = Clean(hostName, TextRules.MaxUsernameLength)
             };
             NetworkInterface.Instance.Connect(new ConnectionConfig(token, _joinPassword.value ?? ""));
         }
@@ -427,7 +429,7 @@ namespace CS2M.UI
             NetworkInterface.Instance.StartServer(new ConnectionConfig(_hostPort.value, string.IsNullOrEmpty(_hostPassword.value) ? null : _hostPassword.value));
         }
 
-        private void SaveConnection(System.Action<ModSettings> update)
+        private void SaveConnection(Action<ModSettings> update)
         {
             ModSettings settings = Mod.Instance?.Settings;
             if (settings == null)

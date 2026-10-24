@@ -1,4 +1,4 @@
-using CS2M.API;
+﻿using CS2M.API;
 using CS2M.API.Commands;
 using CS2M.Commands.Data.Internal;
 using CS2M.Networking;
@@ -29,7 +29,7 @@ namespace CS2M.Commands.Handler.Internal
             }
             else if (TextRules.IsReserved(username))
             {
-                // only the mod's own messages show as the mod
+                // Only the mod's own messages show as the mod
                 username += " (player)";
             }
 

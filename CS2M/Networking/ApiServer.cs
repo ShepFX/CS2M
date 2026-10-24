@@ -1,4 +1,4 @@
-using CS2M.BaseGame.Systems;
+﻿using CS2M.BaseGame.Systems;
 using CS2M.Commands.ApiServer;
 using CS2M.Mods;
 using CS2M.Util;
@@ -40,6 +40,7 @@ namespace CS2M.Networking
         private readonly Stopwatch _sinceKeepAlive = new Stopwatch();
         private ConnectionConfig _connectionConfig;
         private IPEndPoint _endpoint;
+        private string _secret;
 
         // The name lookup and the adapter scan block, so they run in the background; commands sent before the
         // lookup is done wait in _queued. The local address is looked up again every few minutes.
@@ -77,7 +78,7 @@ namespace CS2M.Networking
             RefreshLocalIp();
             EnabledMods.RefreshPlayset(true);
             Log.Info($"Registering the server with the API server as {Token}");
-            // the first keep-alive goes out from KeepAlive once the address lookups are done
+            // The first keep-alive goes out from KeepAlive once the address lookups are done
             _sinceKeepAlive.Reset();
             SendCommand(new PortCheckRequestCommand { Port = connectionConfig.Port });
         }
@@ -217,7 +218,7 @@ namespace CS2M.Networking
             }
 
             bool first = !_sinceKeepAlive.IsRunning;
-            // the first one waits (briefly) for the local address, so LAN players can find the server
+            // The first one waits (briefly) for the local address, so LAN players can find the server
             if ((first && (_localIp != null || _localIpTask == null || _sinceLocalIp.Elapsed.TotalSeconds > 3)) ||
                 (!first && _sinceKeepAlive.Elapsed.TotalSeconds >= KeepAliveSeconds))
             {
@@ -311,7 +312,7 @@ namespace CS2M.Networking
             }
 
             // Players: the host, then everyone connected, with the cursor colour the others see
-            var names = new List<string> { Cap(NetworkInterface.Instance.LocalPlayer.Username, 32) };
+            var names = new List<string> { Cap(NetworkInterface.Instance.LocalPlayer.Username, TextRules.MaxUsernameLength) };
             var colors = new List<string> { HostColor };
             Dictionary<string, string> cursorColors = new Dictionary<string, string>();
             foreach (CursorSystem.RemoteCursor cursor in CursorSystem.Remote.Values)
@@ -329,7 +330,7 @@ namespace CS2M.Networking
                     break;
                 }
 
-                names.Add(Cap(player.Username, 32));
+                names.Add(Cap(player.Username, TextRules.MaxUsernameLength));
                 colors.Add(cursorColors.TryGetValue(player.Username ?? "", out string color) ? color : UnknownColor);
             }
 
@@ -394,8 +395,6 @@ namespace CS2M.Networking
         }
 
         // 32 random bytes, base64url without padding (43 characters), as the lobby expects
-        private string _secret;
-
         private static string GenerateSecret()
         {
             byte[] bytes = new byte[32];

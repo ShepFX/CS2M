@@ -48,7 +48,7 @@ namespace CS2M.Patches
                 return;
             }
 
-            // keep the speed it had before this update (0 stays 0 if the player had paused themselves)
+            // Keep the speed it had before this update (0 stays 0 if the player had paused themselves)
             if (Simulation.GetValue(__instance) is SimulationSystem simulation && simulation.selectedSpeed != __state)
             {
                 simulation.selectedSpeed = __state;

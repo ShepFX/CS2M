@@ -141,6 +141,7 @@ namespace CS2M.Networking
             Mod.Instance.Settings.ApplyAndSave();
         }
 
+        // Joiner: seconds between two resync requests
         private const double ResyncCooldown = 15;
 
         // Host: each joiner resync costs a full save, so they're limited per player and overall
@@ -148,9 +149,9 @@ namespace CS2M.Networking
         private const double HostResyncGlobalSeconds = 10;
         private readonly Stopwatch _lastHostResync = new();
 
-        // players waiting for the city; see SendWorld
+        // Players waiting for the city; see SendWorld
         private readonly List<RemotePlayer> _worldQueue = new();
-        // players the current save is being sent to
+        // Players the current save is being sent to
         private readonly HashSet<RemotePlayer> _sendingTo = new();
         private bool _sendingWorld;
         private readonly Stopwatch _lastResyncRequest = new();
@@ -346,7 +347,7 @@ namespace CS2M.Networking
             }
             else if (LocalPlayer.PlayerType == PlayerType.CLIENT)
             {
-                // the host saves the whole city for every request; don't let a double click do it twice
+                // The host saves the whole city for every request; don't let a double click do it twice
                 if (_lastResyncRequest.IsRunning && _lastResyncRequest.Elapsed.TotalSeconds < ResyncCooldown)
                 {
                     return;
@@ -355,7 +356,7 @@ namespace CS2M.Networking
                 _lastResyncRequest.Restart();
                 Log.Info("Resync: asking the host for its city");
                 Chat.Instance?.PrintGameMessage("Resync: asked the host for a fresh copy of the city.");
-                // the host resends to whoever's connection the request came on; the name is only informative
+                // The host resends to whoever's connection the request came on; the name is only informative
                 SendToServer(new ResyncRequestCommand { Username = LocalPlayer.Username });
             }
         }

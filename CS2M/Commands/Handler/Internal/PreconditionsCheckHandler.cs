@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using CS2M.API.Commands;
 using CS2M.Commands.Data.Internal;
@@ -11,7 +11,7 @@ namespace CS2M.Commands.Handler.Internal
 {
     public class PreconditionsCheckHandler : CommandHandler<PreconditionsCheckCommand>
     {
-        // the lists in a check are compared against ours; anything longer than this isn't a real client
+        // The lists in a check are compared against ours; anything longer than this isn't a real client
         private const int MaxListEntries = 1024;
 
         public PreconditionsCheckHandler()
