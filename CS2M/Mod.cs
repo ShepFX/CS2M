@@ -56,6 +56,11 @@ namespace CS2M
 
             // Load saved settings.
             AssetDatabase.global.LoadSettings(Name, Settings, new ModSettings(this));
+            if (Settings.Migrate())
+            {
+                Log.Info($"Moved the API server setting to {Settings.ApiServer}:{Settings.ApiServerPort}");
+                Settings.ApplyAndSave();
+            }
             Settings.OnSetLoggingLevel(Settings.LoggingLevel);
             Log.Info("Configured and initialised mod settings");
 

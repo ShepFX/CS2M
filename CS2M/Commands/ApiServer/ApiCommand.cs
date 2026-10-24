@@ -19,6 +19,19 @@ namespace CS2M.Commands.ApiServer
         private MessagePackSerializerOptions _model;
 
         /// <summary>
+        ///     The order the commands are registered in, which gives each its type key on the wire (0, 1, 2...).
+        ///     The lobby server (CS2M.Lobby/Protocol.cs) uses the same keys, so only ever add new commands at the end.
+        /// </summary>
+        private static readonly Type[] ProtocolOrder =
+        {
+            typeof(PortCheckRequestCommand),
+            typeof(PortCheckResultCommand),
+            typeof(ServerRegistrationCommand),
+            typeof(SessionInfoCommand),
+            typeof(ServerUnregisterCommand),
+        };
+
+        /// <summary>
         ///     This method is used to send a command to the API server.
         ///     Does only work if the current game acts as a server.
         /// </summary>
@@ -48,6 +61,14 @@ namespace CS2M.Commands.ApiServer
             return MessagePackSerializer.Serialize(command, _model);
         }
 
+        /// <summary>
+        ///     Deserializes a message received from the API server.
+        /// </summary>
+        public ApiCommandBase Deserialize(byte[] message)
+        {
+            return MessagePackSerializer.Deserialize<ApiCommandBase>(message, _model);
+        }
+
         public void RefreshModel()
         {
             _apiCmdMapping.Clear();
@@ -65,6 +86,16 @@ namespace CS2M.Commands.ApiServer
                 );
                 var options = MessagePackSerializerOptions.Standard.WithResolver(resolver).Configure();
 
+                // Register in a fixed order: the keys must match the API server's, and reflection order isn't stable
+                apiHandlers = apiHandlers
+                    .OrderBy(type =>
+                    {
+                        int index = Array.IndexOf(ProtocolOrder, GetCommandType(type));
+                        return index < 0 ? int.MaxValue : index;
+                    })
+                    .ThenBy(type => GetCommandType(type).FullName, StringComparer.Ordinal)
+                    .ToArray();
+
                 // Create instances of the handlers, initialize mappings and register command subclasses in the protobuf model
                 foreach (Type type in apiHandlers)
                 {
@@ -81,6 +112,17 @@ namespace CS2M.Commands.ApiServer
             {
                 Log.Error("Failed to initialize data model", ex);
             }
+        }
+
+        private static Type GetCommandType(Type handlerType)
+        {
+            Type type = handlerType;
+            while (type != null && !(type.IsGenericType && type.GetGenericTypeDefinition() == typeof(ApiCommandHandler<>)))
+            {
+                type = type.BaseType;
+            }
+
+            return type?.GetGenericArguments()[0] ?? handlerType;
         }
     }
 }

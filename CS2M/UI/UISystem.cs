@@ -1,12 +1,18 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Net;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using Colossal.Serialization.Entities;
 using Colossal.UI.Binding;
 using CS2M.API.Networking;
 using CS2M.Mods;
 using CS2M.Networking;
 using CS2M.Settings;
+using CS2M.Util;
 using Game;
 using Game.UI;
 using Game.UI.InGame;
@@ -34,6 +40,14 @@ namespace CS2M.UI
         private ValueBinding<string> _playerStatus;
 
         private ValueBinding<string> _username;
+
+        // Server browser: the lobby's session list as JSON, and "idle", "loading", "ok" or "error"
+        private ValueBinding<string> _lobbySessions;
+        private ValueBinding<string> _lobbyStatus;
+        private readonly object _lobbyLock = new();
+        private (string Status, string Json)? _lobbyResult;
+        private const int MaxLobbyResponse = 512 * 1024;
+        private static readonly Regex SessionToken = new Regex("^[A-Za-z0-9_-]{4,64}$");
         private ValueBinding<bool> _hudCollapsed;
 
         private readonly Stopwatch _downloadTimer = new();
@@ -53,6 +67,29 @@ namespace CS2M.UI
             ChatPanel.WelcomeChatMessage();
         }
 
+        protected override void OnUpdate()
+        {
+            base.OnUpdate();
+
+            // Hand the server browser list over from the download thread
+            (string Status, string Json)? result;
+            lock (_lobbyLock)
+            {
+                result = _lobbyResult;
+                _lobbyResult = null;
+            }
+
+            if (result != null)
+            {
+                if (result.Value.Json != null)
+                {
+                    _lobbySessions.Update(result.Value.Json);
+                }
+
+                _lobbyStatus.Update(result.Value.Status);
+            }
+        }
+
         protected override void OnCreate()
         {
             base.OnCreate();
@@ -68,6 +105,10 @@ namespace CS2M.UI
                 username => { _username.Update(username); }));
 
             AddBinding(new TriggerBinding(Mod.Name, "JoinGame", JoinGame));
+            AddBinding(new TriggerBinding<string>(Mod.Name, "JoinSession", JoinSession));
+            AddBinding(new TriggerBinding(Mod.Name, "RefreshLobby", RefreshLobby));
+            AddBinding(_lobbySessions = new ValueBinding<string>(Mod.Name, "LobbySessions", "[]"));
+            AddBinding(_lobbyStatus = new ValueBinding<string>(Mod.Name, "LobbyStatus", "idle"));
             AddBinding(new TriggerBinding(Mod.Name, "HostGame", HostGame));
             AddBinding(new TriggerBinding(Mod.Name, "StopServer", StopServer));
             AddBinding(new TriggerBinding(Mod.Name, "Resync", () => NetworkInterface.Instance.Resync()));
@@ -125,6 +166,7 @@ namespace CS2M.UI
             {
                 _activeMenuScreenBinding.Update(99);
                 _joinMenuVisible.Update(true);
+                RefreshLobby();
             }
             else if (_gameMode == GameMode.Game)
             {
@@ -156,6 +198,75 @@ namespace CS2M.UI
             });
             NetworkInterface.Instance.UpdateLocalPlayerUsername(_username.value);
             NetworkInterface.Instance.Connect(new ConnectionConfig(_joinIPAddress.value, _joinPort.value, ""));
+        }
+
+        /// <summary>
+        ///     Joins a session from the server browser, through the API server's NAT introduction.
+        /// </summary>
+        private void JoinSession(string token)
+        {
+            if (token == null || !SessionToken.IsMatch(token))
+            {
+                return;
+            }
+
+            SaveConnection(_ => { });
+            NetworkInterface.Instance.UpdateLocalPlayerUsername(_username.value);
+            NetworkInterface.Instance.Connect(new ConnectionConfig(token, ""));
+        }
+
+        /// <summary>
+        ///     Loads the server browser list from the lobby server, off the main thread.
+        /// </summary>
+        private void RefreshLobby()
+        {
+            if (_lobbyStatus.value == "loading")
+            {
+                return;
+            }
+
+            string lobbyUrl = Mod.Instance?.Settings?.LobbyUrl;
+            if (string.IsNullOrWhiteSpace(lobbyUrl))
+            {
+                _lobbyStatus.Update("error");
+                return;
+            }
+
+            string url = lobbyUrl.Trim().TrimEnd('/') + "/sessions";
+            string userAgent = "CS2M/" + VersionUtil.GetModVersion();
+            _lobbyStatus.Update("loading");
+            Task.Run(() =>
+            {
+                (string, string) result;
+                try
+                {
+                    // Cloudflare needs TLS 1.2, which older Mono doesn't enable by default
+                    ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+                    using (var client = new CSMWebClient())
+                    {
+                        client.Encoding = Encoding.UTF8;
+                        client.Headers[HttpRequestHeader.UserAgent] = userAgent;
+                        client.Headers[HttpRequestHeader.Accept] = "application/json";
+                        string body = client.DownloadString(url).Trim();
+                        if (body.Length > MaxLobbyResponse || !body.StartsWith("["))
+                        {
+                            throw new FormatException("not a session list");
+                        }
+
+                        result = ("ok", body);
+                    }
+                }
+                catch (Exception e)
+                {
+                    Log.Warn($"Could not load the server list from {url}: {e.Message}");
+                    result = ("error", null);
+                }
+
+                lock (_lobbyLock)
+                {
+                    _lobbyResult = result;
+                }
+            });
         }
 
         private void HostGame()

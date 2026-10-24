@@ -5,6 +5,7 @@ import {FocusBoundary, NavigationScope} from "cs2/input";
 import {LocalizedNumber, LocalizedPercentage, LocalizedString, Unit, useLocalization} from "cs2/l10n";
 import {InputField} from "../util/input-field";
 import {setVal} from "api";
+import {ServerBrowser} from "./server-browser";
 
 export const joinMenuVisible = bindValue<boolean>(mod.id, 'JoinMenuVisible');
 export const modSupport = bindValue<Array<any>>(mod.id, 'modSupport');
@@ -225,7 +226,11 @@ export const JoinGameMenu = () => {
                             <div className={LoadGameScreenCSS.stepContainer}>
                                 <div className={SaveListCSS.saveList + " " + LoadGameScreenCSS.step}>
                                     <div className={DetailSectionCSS.title}>
-                                        <LocalizedString id={"CS2M.UI.JoinGame"}/>
+                                        <LocalizedString id={"CS2M.UI.Lobby.Title"}/>
+                                    </div>
+                                    <ServerBrowser enabled={enabled}></ServerBrowser>
+                                    <div className={DetailSectionCSS.title}>
+                                        <LocalizedString id={"CS2M.UI.Lobby.ManualJoin"}/>
                                     </div>
                                     <JoinGameSettings></JoinGameSettings>
                                 </div>
