@@ -1,4 +1,4 @@
-using CS2M.API;
+﻿using CS2M.API;
 using CS2M.API.Commands;
 using CS2M.API.Networking;
 using CS2M.Commands;
@@ -83,7 +83,7 @@ namespace CS2M.Networking
                 NatPunchEnabled = true,
                 UnconnectedMessagesEnabled = true,
                 MtuDiscovery = true,
-                // must be the same on both sides; see CommandPolicy.DeliveryOf
+                // Must be the same on both sides; see CommandPolicy.DeliveryOf
                 ChannelsCount = CommandPolicy.ChannelsCount,
             };
             _apiServer = new ApiServer(_netManager);
@@ -106,7 +106,7 @@ namespace CS2M.Networking
         {
             Log.Trace("NetworkManager: InitConnect");
 
-            // the address the player typed stays out of the log
+            // The address the player typed stays out of the log
             Log.Info(connectionConfig.IsTokenBased()
                 ? "Initialize connect to a server from the server list..."
                 : "Initialize connect to a server by address...");
@@ -170,7 +170,7 @@ namespace CS2M.Networking
                 }
                 catch
                 {
-                    // without the API server only a direct connect is possible
+                    // Without the API server only a direct connect is possible
                 }
 
                 return resolved;
@@ -255,7 +255,7 @@ namespace CS2M.Networking
             }
             catch (Exception ex)
             {
-                // a warning, not an error: errors pop up in the game, and this one would show the address
+                // A warning, not an error: errors pop up in the game, and this one would show the address
                 Log.Warn($"Failed to connect to the server: {ex.GetType().Name}");
                 _connectWait.Reset();
                 return false;
@@ -304,7 +304,7 @@ namespace CS2M.Networking
         {
             if (!(peer.Tag is PeerState state))
             {
-                // every accepted peer gets a state; anything else shouldn't be here
+                // Every accepted peer gets a state; anything else shouldn't be here
                 peer.Disconnect();
                 return;
             }
@@ -322,7 +322,7 @@ namespace CS2M.Networking
 
                 if (!state.Messages.TryTake(50))
                 {
-                    // a dozen messages before joining is already more than a real client ever sends
+                    // A dozen messages before joining is already more than a real client ever sends
                     Disconnect(peer, "Invalid join request");
                     return;
                 }
@@ -350,7 +350,7 @@ namespace CS2M.Networking
                 return;
             }
 
-            // bigger messages cost more, so a flood of large ones runs dry sooner
+            // Bigger messages cost more, so a flood of large ones runs dry sooner
             if (!state.Messages.TryTake(1 + size / 8192.0))
             {
                 state.RateDrops++;
@@ -367,7 +367,7 @@ namespace CS2M.Networking
             Type type = command?.GetType();
             if (!CommandPolicy.IsJoinerCommand(type))
             {
-                // host-only (world transfer, simulation results, money, join replies...) or unknown. No strike:
+                // Host-only (world transfer, simulation results, money, join replies...) or unknown. No strike:
                 // dropping it is enough, and a sync system that sends one by mistake shouldn't get players kicked.
                 RateLimitedLog.Warn($"hostonly:{type?.Name}",
                     $"Dropped {type?.Name ?? "null"} from player {playerId}: only the host sends it");
@@ -398,7 +398,7 @@ namespace CS2M.Networking
             Log.Trace($"NetworkManager: received {type.Name} from player {playerId}");
             handler.Parse(command);
 
-            // the host is the hub: pass player actions on to the other joiners (only once the host applied it)
+            // The host is the hub: pass player actions on to the other joiners (only once the host applied it)
             if (handler.RelayOnServer)
             {
                 SendToAllClientsExcept(peer, command);
@@ -495,7 +495,7 @@ namespace CS2M.Networking
 
         private static void Send(NetPeer peer, byte[] data, DeliveryMethod method, byte channel)
         {
-            // sequenced packets can't be split: anything too big for one goes the reliable way
+            // Sequenced packets can't be split: anything too big for one goes the reliable way
             if (method != DeliveryMethod.ReliableOrdered && data.Length > peer.GetMaxSinglePacketSize(method))
             {
                 method = DeliveryMethod.ReliableOrdered;
@@ -512,7 +512,7 @@ namespace CS2M.Networking
             {
                 if (_serverPeer != null)
                 {
-                    // only the one connection we made
+                    // Only the one connection we made
                     peer.Disconnect();
                     return;
                 }
@@ -534,7 +534,7 @@ namespace CS2M.Networking
                     return;
                 }
 
-                // a kick or ban carries its reason as a string
+                // A kick or ban carries its reason as a string
                 if (disconnectInfo.Reason == DisconnectReason.RemoteConnectionClose ||
                     disconnectInfo.Reason == DisconnectReason.ConnectionRejected)
                 {
@@ -548,7 +548,7 @@ namespace CS2M.Networking
                     }
                     catch (Exception)
                     {
-                        // a plain disconnect has no reason
+                        // A plain disconnect has no reason
                     }
                 }
 
@@ -567,7 +567,7 @@ namespace CS2M.Networking
 
         private void ListenerOnNetworkErrorEvent(IPEndPoint endpoint, SocketError socketError)
         {
-            // a warning: errors pop up in the game, and the address must never be shown there or logged
+            // A warning: errors pop up in the game, and the address must never be shown there or logged
             RateLimitedLog.Warn("socket:" + socketError, $"Network error: {socketError}");
         }
 
@@ -630,7 +630,7 @@ namespace CS2M.Networking
             int pending = _peers.Count(p => p.Tag is PeerState { Registered: false });
             int pendingHere = _peers.Count(p => p.Tag is PeerState { Registered: false } s && s.Address == key);
             int maxPlayers = ApiServer.GetMaxPlayers();
-            // the host counts as one; joining peers hold a slot too, so a burst can't overfill the session
+            // The host counts as one; joining peers hold a slot too, so a burst can't overfill the session
             if (_peers.Count >= MaxPeers || (maxPlayers > 0 && 1 + _peers.Count >= maxPlayers))
             {
                 Log.Info("Connection refused: the session is full");

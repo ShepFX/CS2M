@@ -104,7 +104,7 @@ namespace CS2M.Networking
             byte[] b = Encoding.UTF8.GetBytes(given ?? "");
             using (SHA256 sha = SHA256.Create())
             {
-                // comparing hashes keeps the time independent of where the inputs differ and of their lengths
+                // Comparing hashes keeps the time independent of where the inputs differ and of their lengths
                 byte[] ha = sha.ComputeHash(a);
                 byte[] hb = sha.ComputeHash(b);
                 int diff = 0;

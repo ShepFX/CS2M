@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Colossal;
@@ -175,7 +175,7 @@ namespace CS2M.Networking
                 errors.Add("precondition:SERVER_FULL");
             }
 
-                        if (err.HasFlag(PreconditionsUtil.Errors.PASSWORD_INCORRECT))
+            if (err.HasFlag(PreconditionsUtil.Errors.PASSWORD_INCORRECT))
             {
                 errors.Add("precondition:PASSWORD_INCORRECT");
             }
@@ -243,7 +243,7 @@ namespace CS2M.Networking
         /// </summary>
         private const long MaxWorldBytes = 1024L * 1024 * 1024;
 
-        // the size the first slice announced (its length plus RemainingBytes)
+        // The size the first slice announced (its length plus RemainingBytes)
         private long _expectedWorldBytes;
 
         public void SliceReceived(WorldTransferCommand cmd)
@@ -261,7 +261,7 @@ namespace CS2M.Networking
 
             // Resync: the host sends the city again while we're playing. Going back to downloading sets the
             // multiplayer role to None, so the sync systems hold what arrives until the reloaded city is running.
-            if (cmd.NewTransfer && PlayerStatus == PlayerStatus.PLAYING && PlayerType == PlayerType.CLIENT)
+            if (cmd.NewTransfer && PlayerStatus == PlayerStatus.PLAYING)
             {
                 Log.Info("Resync: the host is sending its city again");
                 PlayerStatus = PlayerStatus.DOWNLOADING_MAP;
@@ -296,7 +296,7 @@ namespace CS2M.Networking
                 return;
             }
 
-            // every slice must add up to what the first one announced
+            // Every slice must add up to what the first one announced
             if (_packetStream.Length + cmd.WorldSlice.Length + cmd.RemainingBytes != _expectedWorldBytes)
             {
                 Log.Warn("Received a world slice that doesn't fit the transfer");

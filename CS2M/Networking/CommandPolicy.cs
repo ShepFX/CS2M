@@ -29,7 +29,7 @@ namespace CS2M.Networking
         /// </summary>
         private static readonly HashSet<Type> JoinerCommands = new HashSet<Type>
         {
-            // building and editing the city
+            // Building and editing the city
             typeof(RoadCommand),
             typeof(NetDiffCommand),
             typeof(RoadUpgradeCommand),
@@ -42,7 +42,7 @@ namespace CS2M.Networking
             typeof(TransitLineCommand),
             typeof(TransitLineDeleteCommand),
             typeof(TransitLineSettingsCommand),
-            // panels
+            // Panels
             typeof(PolicyCommand),
             typeof(BuildingPolicyCommand),
             typeof(RenameCommand),
@@ -50,13 +50,13 @@ namespace CS2M.Networking
             typeof(TaxCommand),
             typeof(BudgetCommand),
             typeof(SpeedCommand),
-            // requests the host decides on (never relayed: their handlers have RelayOnServer = false)
+            // Requests the host decides on (never relayed: their handlers have RelayOnServer = false)
             typeof(ChargeCommand),
             typeof(LoanRequestCommand),
             typeof(DevTreeRequestCommand),
             typeof(TilePurchaseRequestCommand),
             typeof(ResyncRequestCommand),
-            // presence
+            // Presence
             typeof(CursorCommand),
             typeof(ChatMessageCommand),
         };
