@@ -30,3 +30,18 @@ namespace CS2M.BaseGame.Commands
         public int AverageHealth { get; set; }
     }
 }
+
+namespace CS2M.BaseGame.Commands
+{
+    /// <summary>
+    ///     The host's budget figures, shown on joiners' budget panels: income and expense per category
+    ///     (CityServiceBudgetSystem.m_Income / m_Expenses) and estimated monthly upkeep per service.
+    /// </summary>
+    public class BudgetFiguresCommand : CS2M.API.Commands.CommandBase
+    {
+        public int[] Income { get; set; }
+        public int[] Expenses { get; set; }
+        public string[] Services { get; set; }
+        public int[] Upkeep { get; set; }
+    }
+}

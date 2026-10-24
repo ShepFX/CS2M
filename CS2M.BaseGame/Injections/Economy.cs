@@ -22,3 +22,13 @@ namespace CS2M.BaseGame.Injections
         protected override void Handle(PopulationCommand command) => PopulationDisplaySystem.Latest = command;
     }
 }
+
+namespace CS2M.BaseGame.Injections
+{
+    public class BudgetFiguresHandler : CS2M.API.Commands.CommandHandler<CS2M.BaseGame.Commands.BudgetFiguresCommand>
+    {
+        public BudgetFiguresHandler() { TransactionCmd = false; }
+        protected override void Handle(CS2M.BaseGame.Commands.BudgetFiguresCommand command) =>
+            CS2M.BaseGame.Systems.BudgetFiguresSystem.Receive(command);
+    }
+}

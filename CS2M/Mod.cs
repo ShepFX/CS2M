@@ -101,6 +101,9 @@ namespace CS2M
             updateSystem.UpdateAfter<PlaceApplySystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
             updateSystem.UpdateAfter<EconomySyncSystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
             updateSystem.UpdateBefore<PopulationDisplaySystem, Game.UI.InGame.ToolbarBottomUISystem>(SystemUpdatePhase.UIUpdate);
+            updateSystem.UpdateAfter<ColorSyncSystem, NetworkingSystem>(SystemUpdatePhase.PreSimulation);
+            // the host's budget figures, written in before the budget panel and the top bar's money trend read them
+            updateSystem.UpdateBefore<BudgetFiguresSystem, Game.UI.InGame.BudgetUISystem>(SystemUpdatePhase.UIUpdate);
             // Other players' cursors: share ours, draw theirs as rings with name labels
             updateSystem.UpdateAfter<CursorSystem, ToolRaycastSystem>(SystemUpdatePhase.Raycast);
             updateSystem.UpdateBefore<CursorOverlaySystem, OverlayRenderSystem>(SystemUpdatePhase.Rendering);
