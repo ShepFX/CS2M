@@ -122,7 +122,7 @@ namespace CS2M.BaseGame.Systems
         private static bool Same(WaterSourceData a, WaterSourceData b)
         {
             return a.m_ConstantDepth == b.m_ConstantDepth && a.m_Radius == b.m_Radius && a.m_Height == b.m_Height &&
-                   a.m_Multiplier == b.m_Multiplier && a.m_Polluted == b.m_Polluted;
+                   a.m_Multiplier == b.m_Multiplier && a.m_Polluted == b.m_Polluted && a.m_Modifier == b.m_Modifier;
         }
 
         internal static string KindName(int kind) => kind == 0 ? "created" : kind == 1 ? "changed" : "removed";

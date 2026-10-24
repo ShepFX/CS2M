@@ -133,7 +133,7 @@ namespace CS2M.Settings
 
         public int GetApiServerPort()
         {
-            return int.Parse(ApiServerPort);
+            return int.TryParse(ApiServerPort, out int port) && port > 0 && port <= 65535 ? port : int.Parse(DefaultApiServerPort);
         }
     }
 }

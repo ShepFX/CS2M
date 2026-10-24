@@ -249,7 +249,13 @@ namespace CS2M.BaseGame.Systems
 
         protected override void OnUpdate()
         {
-            if (Command.CurrentRole != MultiplayerRole.Client || Latest == null)
+            if (Command.CurrentRole != MultiplayerRole.Client)
+            {
+                Latest = null;
+                return;
+            }
+
+            if (Latest == null)
             {
                 return;
             }

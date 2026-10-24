@@ -281,7 +281,7 @@ namespace CS2M.Networking
                 {
                     Log.Warn($"The host's city is {_expectedWorldBytes} bytes, more than the {MaxWorldBytes} allowed");
                     _packetStream = null;
-                    _uiSystem.SetJoinErrors("CS2M.JoinError.DownloadFailed");
+                    _uiSystem.SetJoinErrors("CS2M.UI.JoinError.DownloadFailed");
                     Inactive();
                     return;
                 }
@@ -291,7 +291,7 @@ namespace CS2M.Networking
             else if (_packetStream == null)
             {
                 Log.Warn("Received world slice without initialized packet stream");
-                _uiSystem.SetJoinErrors("CS2M.JoinError.DownloadFailed");
+                _uiSystem.SetJoinErrors("CS2M.UI.JoinError.DownloadFailed");
                 Inactive();
                 return;
             }
@@ -301,7 +301,7 @@ namespace CS2M.Networking
             {
                 Log.Warn("Received a world slice that doesn't fit the transfer");
                 _packetStream = null;
-                _uiSystem.SetJoinErrors("CS2M.JoinError.DownloadFailed");
+                _uiSystem.SetJoinErrors("CS2M.UI.JoinError.DownloadFailed");
                 Inactive();
                 return;
             }

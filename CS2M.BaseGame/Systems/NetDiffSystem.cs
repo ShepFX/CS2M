@@ -84,6 +84,8 @@ namespace CS2M.BaseGame.Systems
             if (Command.CurrentRole == MultiplayerRole.None || Command.SendToAll == null)
             {
                 _watchEdges.Clear();
+                _resyncedBlocks.Clear();
+                _watchFrames = 0;
                 return;
             }
 
@@ -138,7 +140,7 @@ namespace CS2M.BaseGame.Systems
                 }
             }
 
-            if (created.Count == 0 && deletedEdges.Count == 0)
+            if (created.Count == 0 && deletedEdges.Count == 0 && deletedNodes.Count == 0)
             {
                 return;
             }

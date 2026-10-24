@@ -364,7 +364,9 @@ namespace CS2M.BaseGame.Systems
                         Entity prefab = PrefabLookup.Find(EntityManager, _prefabSystem, data.Prefab);
                         if (prefab == Entity.Null || data.Nodes == null)
                         {
-                            BaseGameLog.Warn($"Area received with an unknown prefab {data.Prefab}");
+                            BaseGameLog.Warn(prefab == Entity.Null
+                                ? $"Area received with an unknown prefab {data.Prefab}"
+                                : $"Area received without nodes ({data.Prefab})");
                             continue;
                         }
 
