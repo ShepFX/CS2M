@@ -140,6 +140,13 @@ namespace CS2M.BaseGame.Systems
                         continue;
                     }
 
+                    // a building created in this same apply (a landfill's lot): its areas went with its placement
+                    if (owner != Entity.Null && EntityManager.Exists(owner) && EntityManager.HasComponent<Created>(owner) &&
+                        !EntityManager.HasComponent<Area>(owner))
+                    {
+                        continue;
+                    }
+
                     bool isDeleted = EntityManager.HasComponent<Deleted>(entity);
                     bool isCreated = EntityManager.HasComponent<Created>(entity);
                     if (isDeleted)

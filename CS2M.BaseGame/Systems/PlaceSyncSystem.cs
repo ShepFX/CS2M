@@ -206,6 +206,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class PlaceCaptureSystem : GameSystemBase
     {
+
         private EntityQuery _definitions;
         private ToolSystem _toolSystem;
         private PrefabSystem _prefabSystem;
@@ -223,8 +224,11 @@ namespace CS2M.BaseGame.Systems
 
         protected override void OnUpdate()
         {
+            // buildings with a drawn lot (landfill and the like) are finished by the area tool, which creates
+            // the building and its lot together; area-only edits with that tool stay with the area sync
+            bool areaTool = _toolSystem.activeTool is AreaToolSystem;
             if (Command.CurrentRole == MultiplayerRole.None || Command.SendToAll == null ||
-                !(_toolSystem.activeTool is ObjectToolSystem))
+                !(_toolSystem.activeTool is ObjectToolSystem || areaTool))
             {
                 return;
             }
@@ -241,10 +245,11 @@ namespace CS2M.BaseGame.Systems
                 }
             }
 
-            if (definitions.Count == 0)
+            if (definitions.Count == 0 || (areaTool && !definitions.Exists(d => d.Object != null && !d.HasOwnerDefinition)))
             {
                 return;
             }
+
 
             DefinitionData main = definitions.Find(d => d.Object != null && !d.HasOwnerDefinition) ?? definitions[0];
             // every prefab and position is in the key: upgrades placed one after another share the same main (owner) definition
