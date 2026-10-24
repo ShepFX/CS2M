@@ -22,10 +22,16 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class HostAuthoritySystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<CommandBase> Pending = new ConcurrentQueue<CommandBase>();
+        public static readonly InboundQueue<CommandBase> Pending = new InboundQueue<CommandBase>("HostAuthoritySystem", 8192, 256);
 
         private const float MoneyInterval = 1f;
         private const int WatchFrames = 30;
+
+        /// <summary>
+        ///     The most one ChargeCommand may take. One tool action costs far less (the dearest buildings cost
+        ///     a few million); a larger value is a bad or hostile command.
+        /// </summary>
+        private const long MaxCharge = 50000000;
 
         private ZoneSpawnSystem _zoneSpawnSystem;
         private BuildingUpkeepSystem _buildingUpkeepSystem;
@@ -41,6 +47,11 @@ namespace CS2M.BaseGame.Systems
         private EntityQuery _abandoned;
         private readonly HashSet<Entity> _sentLevelUps = new HashSet<Entity>();
         private readonly HashSet<Entity> _sentAbandoned = new HashSet<Entity>();
+
+        // host: what each joiner has been charged so far this session, net of refunds. A refund (a negative
+        // charge, e.g. bulldozing something just built) is only given back out of that, so a joiner can never
+        // add money to the city by sending negative charges.
+        private readonly Dictionary<int, long> _charged = new Dictionary<int, long>();
 
         protected override void OnCreate()
         {
@@ -75,6 +86,7 @@ namespace CS2M.BaseGame.Systems
             {
                 _sentLevelUps.Clear();
                 _sentAbandoned.Clear();
+                _charged.Clear();
                 return;
             }
 
@@ -89,23 +101,31 @@ namespace CS2M.BaseGame.Systems
 
             while (Pending.TryDequeue(out CommandBase command))
             {
-                switch (command)
+                try
                 {
-                    case SpawnCommand spawn when role == MultiplayerRole.Client:
-                        ApplySpawn(spawn);
-                        break;
-                    case LevelUpCommand levelUp when role == MultiplayerRole.Client:
-                        ApplyLevelUp(levelUp);
-                        break;
-                    case AbandonCommand abandon when role == MultiplayerRole.Client:
-                        ApplyAbandon(abandon);
-                        break;
-                    case MoneyCommand money when role == MultiplayerRole.Client:
-                        SetMoney(money.Money);
-                        break;
-                    case ChargeCommand charge when role == MultiplayerRole.Server:
-                        SetMoney(GetMoney() - charge.Amount);
-                        break;
+                    // the handlers already refuse these from the wrong side; the role checks here are a second layer
+                    switch (command)
+                    {
+                        case SpawnCommand spawn when role == MultiplayerRole.Client:
+                            ApplySpawn(spawn);
+                            break;
+                        case LevelUpCommand levelUp when role == MultiplayerRole.Client:
+                            ApplyLevelUp(levelUp);
+                            break;
+                        case AbandonCommand abandon when role == MultiplayerRole.Client:
+                            ApplyAbandon(abandon);
+                            break;
+                        case MoneyCommand money when role == MultiplayerRole.Client:
+                            SetMoney(money.Money);
+                            break;
+                        case ChargeCommand charge when role == MultiplayerRole.Server:
+                            ApplyCharge(charge);
+                            break;
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(HostAuthoritySystem), e);
                 }
             }
         }
@@ -137,6 +157,40 @@ namespace CS2M.BaseGame.Systems
                 : 0;
         }
 
+        private void ApplyCharge(ChargeCommand charge)
+        {
+            long amount = charge.Amount;
+            if (amount > MaxCharge)
+            {
+                Inbound.Warn("charge-max", $"Charge of {amount} from player {charge.SenderId} is over the limit; {MaxCharge} charged");
+                amount = MaxCharge;
+            }
+
+            _charged.TryGetValue(charge.SenderId, out long paid);
+            if (amount < 0)
+            {
+                long refund = System.Math.Min(-amount, System.Math.Max(0L, paid));
+                if (refund < -amount)
+                {
+                    Inbound.Warn("charge-refund",
+                        $"Refund of {-amount} from player {charge.SenderId} is more than they have paid; {refund} refunded");
+                }
+
+                amount = -refund;
+            }
+
+            if (amount == 0)
+            {
+                return;
+            }
+
+            _charged[charge.SenderId] = paid + amount;
+            SetMoney(ClampInt((long)GetMoney() - amount));
+        }
+
+        private static int ClampInt(long value) =>
+            (int)System.Math.Max(int.MinValue, System.Math.Min(int.MaxValue, value));
+
         private void SetMoney(int amount)
         {
             Entity city = _citySystem.City;
@@ -146,14 +200,15 @@ namespace CS2M.BaseGame.Systems
             }
 
             PlayerMoney money = EntityManager.GetComponentData<PlayerMoney>(city);
-            int difference = amount - money.money;
-            if (difference > 0)
+            // PlayerMoney keeps within +-2e9 but adds in int; step towards the target so nothing overflows
+            const long limit = 2000000000;
+            long target = System.Math.Max(-limit, System.Math.Min(limit, (long)amount));
+            long difference = target - money.money;
+            while (difference != 0)
             {
-                money.Add(difference);
-            }
-            else if (difference < 0)
-            {
-                money.Subtract(-difference);
+                int step = (int)System.Math.Max(-limit, System.Math.Min(limit, difference));
+                money.Add(step);
+                difference -= step;
             }
 
             EntityManager.SetComponentData(city, money);
@@ -254,9 +309,9 @@ namespace CS2M.BaseGame.Systems
         private void ApplySpawn(SpawnCommand spawn)
         {
             Entity prefab = PrefabLookup.Find(EntityManager, _prefabSystem, spawn.Prefab);
-            if (prefab == Entity.Null)
+            if (prefab == Entity.Null || !EntityManager.HasComponent<BuildingData>(prefab))
             {
-                BaseGameLog.Warn($"Spawn received with an unknown prefab {spawn.Prefab}");
+                Inbound.Warn("spawn-prefab", $"Spawn received with an unknown prefab {spawn.Prefab}");
                 return;
             }
 
@@ -296,11 +351,11 @@ namespace CS2M.BaseGame.Systems
         private void ApplyLevelUp(LevelUpCommand levelUp)
         {
             Entity newPrefab = PrefabLookup.Find(EntityManager, _prefabSystem, levelUp.NewPrefab);
-            if (newPrefab == Entity.Null ||
+            if (newPrefab == Entity.Null || !EntityManager.HasComponent<BuildingData>(newPrefab) ||
                 !NetRefs.Resolve(EntityManager, levelUp.Building, out Entity building, _prefabSystem) ||
-                building == Entity.Null)
+                building == Entity.Null || !EntityManager.HasComponent<Building>(building))
             {
-                BaseGameLog.Warn($"Level-up for a building that isn't here ({levelUp.Building?.Prefab})");
+                Inbound.Warn("levelup-missing", $"Level-up for a building that isn't here ({levelUp.Building?.Prefab})");
                 return;
             }
 
@@ -321,7 +376,8 @@ namespace CS2M.BaseGame.Systems
         private void ApplyAbandon(AbandonCommand abandon)
         {
             if (!NetRefs.Resolve(EntityManager, abandon.Building, out Entity building, _prefabSystem) ||
-                building == Entity.Null || EntityManager.HasComponent<Abandoned>(building))
+                building == Entity.Null || !EntityManager.HasComponent<Building>(building) ||
+                EntityManager.HasComponent<Abandoned>(building))
             {
                 return;
             }

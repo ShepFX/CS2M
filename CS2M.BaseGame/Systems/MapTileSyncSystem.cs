@@ -6,6 +6,7 @@ using Game;
 using Game.Areas;
 using Game.City;
 using Game.Common;
+using Game.Prefabs;
 using Game.Simulation;
 using Game.Tools;
 using Unity.Collections;
@@ -24,7 +25,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class MapTileSyncSystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<CommandBase> Pending = new ConcurrentQueue<CommandBase>();
+        public static readonly InboundQueue<CommandBase> Pending = new InboundQueue<CommandBase>("MapTileSyncSystem", 256, 16);
 
         private const float CheckInterval = 0.5f;
         private const float HostRepeat = 10f;
@@ -35,9 +36,15 @@ namespace CS2M.BaseGame.Systems
         // new tiles count as a purchase only this soon after the purchase panel had a selection
         private const float SelectionWindow = 2f;
 
+        // MapTilePurchaseSystem's per-feature weights (map size vs resources); read from the game when possible
+        private static readonly System.Reflection.MethodInfo BaselineModifierMethod =
+            typeof(MapTilePurchaseSystem).GetMethod("GetBaselineModifier",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
         private MapTilePurchaseSystem _purchaseSystem;
         private CitySystem _citySystem;
         private EntityQuery _tiles;
+        private EntityQuery _ownedTiles;
 
         private MultiplayerRole _role = MultiplayerRole.None;
         private float _roleSince;
@@ -61,6 +68,8 @@ namespace CS2M.BaseGame.Systems
                 },
                 None = new[] { ComponentType.ReadOnly<Temp>(), ComponentType.ReadOnly<Deleted>() }
             });
+            // the same set MapTilePurchaseSystem counts as owned
+            _ownedTiles = GetEntityQuery(ComponentType.ReadOnly<MapTile>(), ComponentType.Exclude<Native>());
         }
 
         protected override void OnUpdate()
@@ -105,14 +114,21 @@ namespace CS2M.BaseGame.Systems
 
             while (Pending.TryDequeue(out CommandBase command))
             {
-                switch (command)
+                try
                 {
-                    case MapTilesCommand tiles when role == MultiplayerRole.Client:
-                        ApplyOwned(tiles.Owned, now);
-                        break;
-                    case TilePurchaseRequestCommand request when role == MultiplayerRole.Server:
-                        ApplyPurchase(request);
-                        break;
+                    switch (command)
+                    {
+                        case MapTilesCommand tiles when role == MultiplayerRole.Client:
+                            ApplyOwned(tiles.Owned, now);
+                            break;
+                        case TilePurchaseRequestCommand request when role == MultiplayerRole.Server:
+                            ApplyPurchase(request);
+                            break;
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(MapTileSyncSystem), e);
                 }
             }
 
@@ -181,16 +197,24 @@ namespace CS2M.BaseGame.Systems
                 return;
             }
 
+            // the price is worked out here, as the purchase panel would for this selection; the joiner's figure
+            // is only logged
+            int cost = PurchaseCost(locked);
+            if (cost != request.Cost)
+            {
+                BaseGameLog.Info($"Map tile request: the joiner's panel said {request.Cost}, charging the host's price {cost}");
+            }
+
             if (city != Entity.Null && EntityManager.HasComponent<PlayerMoney>(city))
             {
                 PlayerMoney money = EntityManager.GetComponentData<PlayerMoney>(city);
-                if (!money.m_Unlimited && money.money < request.Cost)
+                if (!money.m_Unlimited && money.money < cost)
                 {
-                    BaseGameLog.Warn($"Map tile request refused: costs {request.Cost}, the city has {money.money}");
+                    BaseGameLog.Warn($"Map tile request refused: costs {cost}, the city has {money.money}");
                     return;
                 }
 
-                money.Subtract(request.Cost);
+                money.Subtract(cost);
                 EntityManager.SetComponentData(city, money);
             }
 
@@ -199,7 +223,83 @@ namespace CS2M.BaseGame.Systems
                 MapTilePurchaseSystem.UnlockTile(EntityManager, tile);
             }
 
-            BaseGameLog.Info($"Map tile request received: {locked.Count} tiles for {request.Cost}");
+            BaseGameLog.Info($"Map tile request received: {locked.Count} tiles for {cost}");
+        }
+
+        /// <summary>
+        ///     What MapTilePurchaseSystem charges for buying these locked tiles now: each tile's features (area,
+        ///     resources) weighted by the prefab's feature costs and cost factor, the dearest tile multiplied by
+        ///     the number of tiles already owned, the next by one more, and so on.
+        /// </summary>
+        private int PurchaseCost(List<Entity> locked)
+        {
+            int owned = _ownedTiles.CalculateEntityCountWithoutFiltering();
+            var costs = new List<float>();
+            foreach (Entity tile in locked)
+            {
+                if (!EntityManager.HasBuffer<MapFeatureElement>(tile) || !EntityManager.HasComponent<PrefabRef>(tile))
+                {
+                    continue;
+                }
+
+                Entity prefab = EntityManager.GetComponentData<PrefabRef>(tile).m_Prefab;
+                if (!EntityManager.HasComponent<TilePurchaseCostFactor>(prefab) || !EntityManager.HasBuffer<MapFeatureData>(prefab))
+                {
+                    continue;
+                }
+
+                float factor = EntityManager.GetComponentData<TilePurchaseCostFactor>(prefab).m_Amount;
+                DynamicBuffer<MapFeatureElement> features = EntityManager.GetBuffer<MapFeatureElement>(tile, true);
+                DynamicBuffer<MapFeatureData> prices = EntityManager.GetBuffer<MapFeatureData>(prefab, true);
+                double tileCost = 0;
+                for (int j = 0; j < features.Length && j < prices.Length; j++)
+                {
+                    tileCost += features[j].m_Amount * BaselineModifier(j) * 10.0 * prices[j].m_Cost * factor;
+                }
+
+                costs.Add((float)tileCost);
+            }
+
+            costs.Sort();
+            double total = 0;
+            for (int k = 0; k < costs.Count; k++)
+            {
+                total += costs[costs.Count - k - 1] * (double)(owned + k);
+            }
+
+            return (int)System.Math.Max(0, System.Math.Min(int.MaxValue, System.Math.Round(total)));
+        }
+
+        private double BaselineModifier(int feature)
+        {
+            if (BaselineModifierMethod != null)
+            {
+                try
+                {
+                    return (double)BaselineModifierMethod.Invoke(_purchaseSystem, new object[] { feature });
+                }
+                catch (System.Exception)
+                {
+                    // fall through to the values the game used when this was written
+                }
+            }
+
+            const double size = 1.0 / (623.304347826087 * 623.304347826087);
+            const double resource = 8.0718994140625E-07;
+            switch (feature)
+            {
+                case 0:
+                case 1:
+                    return size;
+                case 2:
+                case 3:
+                case 4:
+                case 5:
+                case 7:
+                    return resource;
+                default:
+                    return 1.0;
+            }
         }
 
         // ---------- joiners ----------

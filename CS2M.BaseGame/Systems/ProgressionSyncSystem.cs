@@ -23,7 +23,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class ProgressionSyncSystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<CommandBase> Pending = new ConcurrentQueue<CommandBase>();
+        public static readonly InboundQueue<CommandBase> Pending = new InboundQueue<CommandBase>("ProgressionSyncSystem", 512, 32);
 
         private const float SendInterval = 1f;
         private const float CheckInterval = 0.5f;
@@ -105,23 +105,31 @@ namespace CS2M.BaseGame.Systems
 
             while (Pending.TryDequeue(out CommandBase command))
             {
-                switch (command)
+                try
                 {
-                    case ProgressionCommand progression when role == MultiplayerRole.Client:
-                        ApplyProgression(progression);
-                        break;
-                    case DevTreeCommand tree when role == MultiplayerRole.Client:
-                        ApplyDevTree(tree.Nodes);
-                        break;
-                    case LoanRequestCommand loan when role == MultiplayerRole.Server:
-                        // the game's own path: clamps to the credit limit and pays out or takes back the money
-                        // (LoanSystem applies it later this frame; the next regular send carries the result)
-                        _loanSystem.ChangeLoan(loan.Amount);
-                        BaseGameLog.Info($"Loan request received: {loan.Amount}");
-                        break;
-                    case DevTreeRequestCommand node when role == MultiplayerRole.Server:
-                        PurchaseNode(node.Node);
-                        break;
+                    // the handlers already refuse these from the wrong side; the role checks are a second layer
+                    switch (command)
+                    {
+                        case ProgressionCommand progression when role == MultiplayerRole.Client:
+                            ApplyProgression(progression);
+                            break;
+                        case DevTreeCommand tree when role == MultiplayerRole.Client:
+                            ApplyDevTree(tree.Nodes);
+                            break;
+                        case LoanRequestCommand loan when role == MultiplayerRole.Server:
+                            // the game's own path: clamps to the credit limit and pays out or takes back the money
+                            // (LoanSystem applies it later this frame; the next regular send carries the result)
+                            _loanSystem.ChangeLoan(loan.Amount);
+                            BaseGameLog.Info($"Loan request received: {loan.Amount}");
+                            break;
+                        case DevTreeRequestCommand node when role == MultiplayerRole.Server:
+                            PurchaseNode(node.Node);
+                            break;
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(ProgressionSyncSystem), e);
                 }
             }
 
@@ -248,7 +256,22 @@ namespace CS2M.BaseGame.Systems
                 _devTreeSystem.points = command.DevTreePoints;
             }
 
-            _hostMilestone = command.Milestone;
+            // never further than the last milestone this game has
+            _hostMilestone = System.Math.Min(command.Milestone, LastMilestone());
+        }
+
+        private int LastMilestone()
+        {
+            int last = 0;
+            using (NativeArray<MilestoneData> data = _milestones.ToComponentDataArray<MilestoneData>(Allocator.Temp))
+            {
+                foreach (MilestoneData milestone in data)
+                {
+                    last = System.Math.Max(last, milestone.m_Index);
+                }
+            }
+
+            return last;
         }
 
         private void SendLocalLoan()
@@ -304,7 +327,7 @@ namespace CS2M.BaseGame.Systems
                 }
 
                 Entity node = PrefabLookup.Find(EntityManager, _prefabSystem, name);
-                if (node == Entity.Null)
+                if (node == Entity.Null || !EntityManager.HasComponent<DevTreeNodeData>(node))
                 {
                     continue;
                 }

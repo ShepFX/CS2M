@@ -18,9 +18,14 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class EconomySyncSystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<CommandBase> Pending = new ConcurrentQueue<CommandBase>();
+        public static readonly InboundQueue<CommandBase> Pending = new InboundQueue<CommandBase>("EconomySyncSystem", 256, 16);
 
         private const float CheckInterval = 0.5f;
+
+        /// <summary>The service budget slider's range in the game's budget panel, in percent.</summary>
+        public const int MinBudget = 50;
+
+        public const int MaxBudget = 150;
 
         // TaxSystem keeps every rate in one private NativeArray<int>
         private static readonly FieldInfo TaxRatesField =
@@ -30,6 +35,7 @@ namespace CS2M.BaseGame.Systems
         private CityServiceBudgetSystem _budgetSystem;
         private PrefabSystem _prefabSystem;
         private EntityQuery _budgetQuery;
+        private EntityQuery _taxParameters;
 
         private int[] _knownTaxes;
         private Dictionary<string, int> _knownBudgets;
@@ -42,6 +48,7 @@ namespace CS2M.BaseGame.Systems
             _budgetSystem = World.GetOrCreateSystemManaged<CityServiceBudgetSystem>();
             _prefabSystem = World.GetOrCreateSystemManaged<PrefabSystem>();
             _budgetQuery = GetEntityQuery(ComponentType.ReadOnly<ServiceBudgetData>());
+            _taxParameters = GetEntityQuery(ComponentType.ReadOnly<TaxParameterData>());
         }
 
         protected override void OnUpdate()
@@ -55,25 +62,36 @@ namespace CS2M.BaseGame.Systems
 
             while (Pending.TryDequeue(out CommandBase command))
             {
-                if (command is TaxCommand tax)
+                try
                 {
-                    SetTaxes(tax.Rates);
-                    _knownTaxes = tax.Rates;
-                    BaseGameLog.Info("Taxes changed by another player");
-                }
-                else if (command is BudgetCommand budget)
-                {
-                    for (int i = 0; i < budget.Services.Length; i++)
+                    if (command is TaxCommand tax)
                     {
-                        Entity service = PrefabLookup.Find(EntityManager, _prefabSystem, budget.Services[i]);
-                        if (service != Entity.Null)
+                        if (SetTaxes(tax.Rates))
                         {
-                            _budgetSystem.SetServiceBudget(service, budget.Budgets[i]);
+                            // what the game kept after applying its own limits
+                            _knownTaxes = GetTaxes();
+                            BaseGameLog.Info("Taxes changed by another player");
                         }
                     }
+                    else if (command is BudgetCommand budget)
+                    {
+                        // the handler made both arrays the same length and clamped the values
+                        for (int i = 0; i < budget.Services.Length; i++)
+                        {
+                            Entity service = PrefabLookup.Find(EntityManager, _prefabSystem, budget.Services[i]);
+                            if (service != Entity.Null)
+                            {
+                                _budgetSystem.SetServiceBudget(service, budget.Budgets[i]);
+                            }
+                        }
 
-                    _knownBudgets = GetBudgets();
-                    BaseGameLog.Info("Service budgets changed by another player");
+                        _knownBudgets = GetBudgets();
+                        BaseGameLog.Info("Service budgets changed by another player");
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(EconomySyncSystem), e);
                 }
             }
 
@@ -123,21 +141,37 @@ namespace CS2M.BaseGame.Systems
             return rates.IsCreated ? rates.ToArray() : null;
         }
 
-        private void SetTaxes(int[] values)
+        private bool SetTaxes(int[] values)
         {
             if (TaxRatesField == null || values == null)
             {
-                return;
+                return false;
             }
 
             // jobs read the table; let them finish first
             _taxSystem.Readers.Complete();
 
             var rates = (NativeArray<int>)TaxRatesField.GetValue(_taxSystem);
-            for (int i = 0; i < rates.Length && i < values.Length; i++)
+            if (!rates.IsCreated || values.Length != rates.Length)
+            {
+                Inbound.Warn("tax-length", $"Taxes received with {values.Length} rates, this game has {rates.Length}; ignored");
+                return false;
+            }
+
+            for (int i = 0; i < rates.Length; i++)
             {
                 rates[i] = values[i];
             }
+
+            // the same limits the tax sliders get: setting the overall rate clamps it to TaxParameterData and
+            // then clamps every area, job level and resource rate under it (EnsureAreaTaxRateLimits)
+            if (!_taxParameters.IsEmptyIgnoreFilter)
+            {
+                _taxSystem.GetTaxParameterData();
+                _taxSystem.TaxRate = _taxSystem.TaxRate;
+            }
+
+            return true;
         }
 
         private Dictionary<string, int> GetBudgets()
