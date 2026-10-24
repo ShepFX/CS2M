@@ -100,6 +100,13 @@ namespace CS2M
             updateSystem.UpdateAfter<CursorSystem, ToolRaycastSystem>(SystemUpdatePhase.Raycast);
             updateSystem.UpdateBefore<CursorOverlaySystem, OverlayRenderSystem>(SystemUpdatePhase.Rendering);
             updateSystem.UpdateAt<CursorUISystem>(SystemUpdatePhase.UIUpdate);
+            // Feature batch: each registers its own systems
+            CS2M.BaseGame.Features.RoadUpgradesFeature.Register(updateSystem);
+            CS2M.BaseGame.Features.AreasPoliciesFeature.Register(updateSystem);
+            CS2M.BaseGame.Features.TransitLinesFeature.Register(updateSystem);
+            CS2M.BaseGame.Features.TerrainWaterFeature.Register(updateSystem);
+            CS2M.BaseGame.Features.BuildingExtrasFeature.Register(updateSystem);
+            CS2M.BaseGame.Features.ProgressionSessionFeature.Register(updateSystem);
             Log.Info("Loading complete");
         }
 
