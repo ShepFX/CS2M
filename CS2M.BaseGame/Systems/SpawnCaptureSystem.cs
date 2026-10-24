@@ -5,7 +5,6 @@ using Game.Prefabs;
 using Game.Tools;
 using Unity.Collections;
 using Unity.Entities;
-using Unity.Mathematics;
 
 namespace CS2M.BaseGame.Systems
 {
@@ -64,8 +63,8 @@ namespace CS2M.BaseGame.Systems
                         Position = NetRefs.F(o.m_Position),
                         LocalPosition = NetRefs.F(o.m_LocalPosition),
                         Scale = NetRefs.F(o.m_Scale),
-                        Rotation = Q(o.m_Rotation),
-                        LocalRotation = Q(o.m_LocalRotation),
+                        Rotation = Definitions.Q(o.m_Rotation),
+                        LocalRotation = Definitions.Q(o.m_LocalRotation),
                         Elevation = o.m_Elevation,
                         Intensity = o.m_Intensity,
                         Age = o.m_Age,
@@ -79,8 +78,6 @@ namespace CS2M.BaseGame.Systems
                 }
             }
         }
-
-        private static float[] Q(quaternion q) => new[] { q.value.x, q.value.y, q.value.z, q.value.w };
     }
 
     /// <summary>

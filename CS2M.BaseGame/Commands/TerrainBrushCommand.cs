@@ -3,12 +3,10 @@ using CS2M.API.Commands;
 namespace CS2M.BaseGame.Commands
 {
     /// <summary>
-    ///     Terrain brush stamps applied by one player's terrain tool over ~100 ms.
+    ///     Terrain brush stamps applied by one player's terrain tool over about 100 ms. One command holds one
+    ///     tool and brush; a change of tool or brush mid-stroke starts a new command.
+    ///     Sent by: TerrainBrushSendSystem (collected by TerrainBrushCaptureSystem).
     /// </summary>
-    /// <remarks>
-    ///     Sent by: TerrainBrushCaptureSystem / TerrainBrushSendSystem. One command holds one tool and
-    ///     brush; a change of tool or brush mid-stroke starts a new command.
-    /// </remarks>
     public class TerrainBrushCommand : CommandBase
     {
         /// <summary>

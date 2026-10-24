@@ -3,7 +3,7 @@ using CS2M.API.Commands;
 namespace CS2M.BaseGame.Commands
 {
     /// <summary>
-    ///     Identifies an existing area on the other game: its prefab and node positions (x, y, z per node).
+    ///     Identifies an existing area on the receiving game: its prefab and node positions (x, y, z per node).
     /// </summary>
     public class AreaKey
     {
@@ -54,15 +54,13 @@ namespace CS2M.BaseGame.Commands
         public bool Active { get; set; }
         public float Adjustment { get; set; }
     }
-}
 
-namespace CS2M.BaseGame.Commands
-{
     /// <summary>
     ///     The random name index of each district on the host. Each game rolls its own index for a new
-    ///     district, so without this the same district has a different name on every PC.
+    ///     district, so without this the same district has a different name for every player.
+    ///     Sent by: DistrictNameSyncSystem (host only).
     /// </summary>
-    public class DistrictNamesCommand : CS2M.API.Commands.CommandBase
+    public class DistrictNamesCommand : CommandBase
     {
         public AreaKey[] Districts { get; set; }
         public int[] Indices { get; set; }

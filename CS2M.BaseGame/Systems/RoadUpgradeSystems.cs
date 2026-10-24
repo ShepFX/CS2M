@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Colossal.Mathematics;
 using CS2M.API.Commands;
@@ -26,8 +25,8 @@ namespace CS2M.BaseGame.Systems
         public Entity StartNode;
         public string SubReplacements;
 
-        // Where the segment/junction was before the change. The other game still has it there, and an upgrade
-        // can move it (elevation or width changes), so it must be looked up by this, not by the new geometry.
+        // Where the segment/junction was before the change. The receiving games still have it there, and an
+        // upgrade can move it (elevation or width changes), so it must be looked up by this, not the new geometry.
         public CS2M.BaseGame.Commands.NetRef Ref;
 
         public bool SameAs(NetUpgradeState other)
@@ -280,6 +279,7 @@ namespace CS2M.BaseGame.Systems
 
         // segments still missing are retried a few times a second, not every frame
         private const float RetryInterval = 0.25f;
+        private const int MaxWaiting = 4096;
         private const RoadFlags AlignmentFlags = RoadFlags.StartHalfAligned | RoadFlags.EndHalfAligned;
 
         private PrefabSystem _prefabSystem;
@@ -338,8 +338,6 @@ namespace CS2M.BaseGame.Systems
                 BaseGameLog.Info($"Road upgrades received: {edges} segment(s), {nodes} junction(s) updated");
             }
         }
-
-        private const int MaxWaiting = 4096;
 
         private static void Trim<T>(List<KeyValuePair<float, T>> waiting, string what)
         {

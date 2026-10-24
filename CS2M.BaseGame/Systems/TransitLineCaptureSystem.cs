@@ -338,7 +338,7 @@ namespace CS2M.BaseGame.Systems
             RemovedByNetwork.Clear();
         }
 
-        // a line that belongs to a building goes with it, on both games
+        // a line that belongs to a building is removed with it on every game
         private bool OwnerRemoved(Entity entity)
         {
             if (!EntityManager.HasComponent<Owner>(entity))

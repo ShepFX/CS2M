@@ -3,12 +3,10 @@ using CS2M.API.Commands;
 namespace CS2M.BaseGame.Commands
 {
     /// <summary>
-    ///     Zoning painted on one zone block: the cells the zone tool selected and the zone they got.
+    ///     Zoning painted on one zone block: the cells the zone tool selected and the zone they got. The block is
+    ///     found by its geometry, because entity ids differ between games.
+    ///     Sent by: ZoneCaptureSystem and NetDiffCaptureSystem.
     /// </summary>
-    /// <remarks>
-    ///     Sent by: ZoneCaptureSystem. The block is found by its geometry,
-    ///     because entity ids differ between the games.
-    /// </remarks>
     public class ZoneCellsCommand : CommandBase
     {
         public float PosX { get; set; }

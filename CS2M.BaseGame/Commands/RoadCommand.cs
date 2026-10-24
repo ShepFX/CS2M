@@ -52,7 +52,8 @@ namespace CS2M.BaseGame.Commands
     }
 
     /// <summary>
-    ///     Everything the road tool built in one click. Sent by: RoadCaptureSystem.
+    ///     Everything the road tool built in one click, as tool definitions. Applied by RoadApplySystem; nothing sends
+    ///     it at present, because roads are synced as the applied result (NetDiffCommand).
     /// </summary>
     public class RoadCommand : CommandBase
     {

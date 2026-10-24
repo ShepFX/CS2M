@@ -4,7 +4,7 @@ namespace CS2M.BaseGame.Commands
 {
     /// <summary>
     ///     A transport line as it is right now: its prefab and the positions of its waypoints in order
-    ///     (x, y, z per waypoint). Lines have no position of their own, so this is how both games find the same one.
+    ///     (x, y, z per waypoint). Lines have no position of their own, so this is how every game finds the same one.
     /// </summary>
     public class LineRef
     {

@@ -7,7 +7,7 @@ namespace CS2M.BaseGame
 {
     /// <summary>
     ///     Prefab entities differ between games, so prefabs are sent by type and name.
-    ///     (PrefabID also carries a content hash, which isn't needed when both players run the same mods.)
+    ///     (PrefabID also carries a content hash, which isn't needed when every player runs the same mods.)
     ///     <para>
     ///         The name map is built on the first lookup and rebuilt on a miss only when the number of prefabs
     ///         changed (prefabs can load after the first lookup), or when an unseen name misses and the map is

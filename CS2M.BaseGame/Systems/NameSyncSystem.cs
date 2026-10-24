@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
 using CS2M.API.Commands;
@@ -17,7 +16,8 @@ namespace CS2M.BaseGame.Systems
     ///     Custom names of buildings, roads/streets and the city. Renaming only goes through NameSystem.SetCustomName
     ///     (and CityConfigurationSystem.cityName), which keeps the names in a dictionary, so that dictionary is
     ///     compared with the last known copy a few times a second, the same way as taxes and budgets.
-    ///     District and transport line names aren't synced: those have no position to identify them by.
+    ///     District names aren't synced here, as districts have no position to identify them by; transport line
+    ///     names go with the rest of the line settings (TransitLineSettingsSystem).
     /// </summary>
     public partial class NameSyncSystem : GameSystemBase
     {
@@ -136,7 +136,7 @@ namespace CS2M.BaseGame.Systems
                 street = true;
             }
 
-            // vehicles and creatures move, so a position can't find them on the other game
+            // vehicles and creatures move, so a position can't find them on another game
             if (EntityManager.HasComponent<Game.Vehicles.Vehicle>(described) ||
                 EntityManager.HasComponent<Game.Creatures.Creature>(described))
             {
