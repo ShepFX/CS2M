@@ -24,7 +24,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class TransitLineApplySystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<CommandBase> Pending = new ConcurrentQueue<CommandBase>();
+        public static readonly InboundQueue<CommandBase> Pending = new InboundQueue<CommandBase>("TransitLineApplySystem", 1024, 32);
 
         // a stop placed just before the line may still be under construction here
         private const float ConnectionWait = 5f;
@@ -32,16 +32,30 @@ namespace CS2M.BaseGame.Systems
         private const float MatchDistanceSq = 0.01f;
         private const float ResolveInterval = 0.25f;
 
+        private const int MaxOrdered = 1024;
+        private const int MaxSettings = 256;
+
         private class WaitingSettings
         {
             public TransitLineSettingsCommand Command;
             public float Since;
+            public string Key;
+        }
+
+        // a line whose stops aren't all here yet: what's resolved so far, and since when it waits
+        private class WaitingLine
+        {
+            public float Since;
+            public float LastTry;
+            public Entity[] Connections;
         }
 
         private readonly List<CommandBase> _ordered = new List<CommandBase>();
+        private readonly Dictionary<TransitLineCommand, WaitingLine> _waitingLines = new Dictionary<TransitLineCommand, WaitingLine>();
         private readonly List<WaitingSettings> _settings = new List<WaitingSettings>();
-        private float _waitStart = -1f;
-        private float _lastResolve;
+        // each queued command's line keys, worked out once
+        private readonly Dictionary<CommandBase, string[]> _keys = new Dictionary<CommandBase, string[]>();
+        private float _lastSettingsTry;
 
         private PrefabSystem _prefabSystem;
         private NameSystem _nameSystem;
@@ -63,26 +77,38 @@ namespace CS2M.BaseGame.Systems
 
             float now = UnityEngine.Time.realtimeSinceStartup;
 
-            // settings waiting for their line go first. A line built here still carries Created until the game
-            // has assigned its own number (next frame), which would otherwise overwrite the one received
-            for (int i = 0; i < _settings.Count; i++)
+            // settings waiting for their line go first, a few times a second. A line built here still carries
+            // Created until the game has assigned its own number (next frame), which would otherwise overwrite
+            // the one received
+            if (_settings.Count > 0 && now - _lastSettingsTry >= ResolveInterval)
             {
-                WaitingSettings waiting = _settings[i];
-                Entity route = Lines.Find(EntityManager, _prefabSystem, waiting.Command.Line);
-                if (route != Entity.Null && !EntityManager.HasComponent<Created>(route))
+                _lastSettingsTry = now;
+                for (int i = 0; i < _settings.Count; i++)
                 {
-                    ApplySettings(route, waiting.Command);
-                }
-                else if (now - waiting.Since > SettingsWait)
-                {
-                    BaseGameLog.Warn($"Transit line settings received for a line missing here ({waiting.Command.Line?.Prefab})");
-                }
-                else
-                {
-                    continue;
-                }
+                    WaitingSettings waiting = _settings[i];
+                    try
+                    {
+                        Entity route = Lines.Find(EntityManager, _prefabSystem, waiting.Command.Line);
+                        if (route != Entity.Null && !EntityManager.HasComponent<Created>(route))
+                        {
+                            ApplySettings(route, waiting.Command);
+                        }
+                        else if (now - waiting.Since > SettingsWait)
+                        {
+                            Inbound.Warn("line-settings-missing", $"Transit line settings received for a line missing here ({waiting.Command.Line?.Prefab})");
+                        }
+                        else
+                        {
+                            continue;
+                        }
+                    }
+                    catch (System.Exception e)
+                    {
+                        Inbound.Failed(nameof(TransitLineApplySystem), e);
+                    }
 
-                _settings.RemoveAt(i--);
+                    _settings.RemoveAt(i--);
+                }
             }
 
             while (Pending.TryDequeue(out CommandBase command))
@@ -90,81 +116,218 @@ namespace CS2M.BaseGame.Systems
                 _ordered.Add(command);
             }
 
-            // in order, so a change never overtakes the line's creation
-            while (_ordered.Count > 0)
+            if (_ordered.Count > MaxOrdered)
             {
-                CommandBase command = _ordered[0];
-                if (command is TransitLineSettingsCommand settings)
+                Inbound.Warn("line-ordered", $"Over {MaxOrdered} transit line changes waiting; oldest dropped");
+                foreach (CommandBase dropped in _ordered.GetRange(0, _ordered.Count - MaxOrdered))
                 {
-                    // applied right away when the line is already settled, so a reshape queued right after it
-                    // can't move the line away from the waypoints this command names
-                    Entity route = Lines.Find(EntityManager, _prefabSystem, settings.Line);
-                    if (route != Entity.Null && !EntityManager.HasComponent<Created>(route))
+                    if (dropped is TransitLineCommand line)
                     {
-                        ApplySettings(route, settings);
-                    }
-                    else
-                    {
-                        _settings.Add(new WaitingSettings { Command = settings, Since = now });
-                    }
-                }
-                else if (command is TransitLineDeleteCommand delete)
-                {
-                    Delete(delete);
-                }
-                else if (command is TransitLineCommand line)
-                {
-                    // each stop lookup scans every object, so retry a waiting line a few times a second only
-                    if (_waitStart >= 0f && now - _lastResolve < ResolveInterval)
-                    {
-                        break;
+                        _waitingLines.Remove(line);
                     }
 
-                    _lastResolve = now;
-                    Entity[] connections = ResolveConnections(line, out int missing);
-                    if (missing > 0)
+                    _keys.Remove(dropped);
+                }
+
+                _ordered.RemoveRange(0, _ordered.Count - MaxOrdered);
+            }
+
+            // In order per line, so a change never overtakes the line's creation. A line waiting for its stops
+            // holds back only the later commands for the same line (by its old or new waypoints), not the rest.
+            HashSet<string> blocked = null;
+            for (int i = 0; i < _ordered.Count; i++)
+            {
+                CommandBase command = _ordered[i];
+                bool done = true;
+                try
+                {
+                    if (Touches(command, blocked))
                     {
-                        if (_waitStart < 0f)
+                        Block(command, ref blocked);
+                        done = false;
+                    }
+                    else if (command is TransitLineSettingsCommand settings)
+                    {
+                        // applied right away when the line is already settled, so a reshape queued right after it
+                        // can't move the line away from the waypoints this command names
+                        Entity route = Lines.Find(EntityManager, _prefabSystem, settings.Line);
+                        if (route != Entity.Null && !EntityManager.HasComponent<Created>(route))
                         {
-                            _waitStart = now;
+                            ApplySettings(route, settings);
                         }
-
-                        if (now - _waitStart < ConnectionWait)
+                        else
                         {
-                            break;
+                            WaitForLine(settings, now);
                         }
-
-                        BaseGameLog.Warn($"Transit line received with {missing} stop(s) missing here; those waypoints are built without a stop");
                     }
+                    else if (command is TransitLineDeleteCommand delete)
+                    {
+                        Delete(delete);
+                    }
+                    else if (command is TransitLineCommand line)
+                    {
+                        if (!Ready(line, now, out Entity[] connections, out int missing))
+                        {
+                            Block(command, ref blocked);
+                            done = false;
+                        }
+                        else
+                        {
+                            if (missing > 0)
+                            {
+                                Inbound.Warn("line-stops-missing", $"Transit line received with {missing} stop(s) missing here; those waypoints are built without a stop");
+                            }
 
-                    _waitStart = -1f;
-                    Build(line, connections);
+                            Build(line, connections);
+                        }
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(TransitLineApplySystem), e);
+                    done = true;
                 }
 
-                _ordered.RemoveAt(0);
+                if (done)
+                {
+                    if (command is TransitLineCommand finished)
+                    {
+                        _waitingLines.Remove(finished);
+                    }
+
+                    _keys.Remove(command);
+                    _ordered.RemoveAt(i--);
+                }
             }
         }
 
-        private Entity[] ResolveConnections(TransitLineCommand line, out int missing)
+        /// <summary>
+        ///     Whether a line's stops are all here, or it has waited long enough. Only the stops still missing are
+        ///     looked up again, a few times a second.
+        /// </summary>
+        private bool Ready(TransitLineCommand line, float now, out Entity[] connections, out int missing)
         {
+            if (!_waitingLines.TryGetValue(line, out WaitingLine waiting))
+            {
+                waiting = new WaitingLine
+                {
+                    Since = now, LastTry = float.NegativeInfinity, Connections = new Entity[line.Waypoints?.Length ?? 0]
+                };
+                _waitingLines[line] = waiting;
+            }
+
+            connections = waiting.Connections;
             missing = 0;
-            var connections = new Entity[line.Waypoints?.Length ?? 0];
+            bool retry = now - waiting.LastTry >= ResolveInterval;
+            if (retry)
+            {
+                waiting.LastTry = now;
+            }
+
             for (int i = 0; i < connections.Length; i++)
             {
                 NetRef connection = line.Waypoints[i].Connection;
-                if (connection == null || connection.Kind == 0)
+                if (connection == null || connection.Kind == 0 || connections[i] != Entity.Null)
                 {
                     continue;
                 }
 
-                if (!NetRefs.Resolve(EntityManager, connection, out connections[i], _prefabSystem) || connections[i] == Entity.Null)
+                if (retry && NetRefs.Resolve(EntityManager, connection, out Entity found, _prefabSystem) && found != Entity.Null)
                 {
-                    connections[i] = Entity.Null;
-                    missing++;
+                    connections[i] = found;
+                    continue;
+                }
+
+                missing++;
+            }
+
+            return missing == 0 || now - waiting.Since >= ConnectionWait;
+        }
+
+        private void WaitForLine(TransitLineSettingsCommand settings, float now)
+        {
+            // a newer settings command for the same line replaces the waiting one
+            string key = Lines.Key(settings.Line);
+            _settings.RemoveAll(w => w.Key == key);
+            _settings.Add(new WaitingSettings { Command = settings, Since = now, Key = key });
+            if (_settings.Count > MaxSettings)
+            {
+                Inbound.Warn("line-settings-waiting", $"Over {MaxSettings} transit line settings waiting for their line; oldest dropped");
+                _settings.RemoveRange(0, _settings.Count - MaxSettings);
+            }
+        }
+
+        // the lines a command refers to (by waypoints) and, for a line change, the line it becomes
+        private string[] Keys(CommandBase command)
+        {
+            if (_keys.TryGetValue(command, out string[] keys))
+            {
+                return keys;
+            }
+
+            switch (command)
+            {
+                case TransitLineSettingsCommand settings:
+                    keys = new[] { Lines.Key(settings.Line) };
+                    break;
+                case TransitLineDeleteCommand delete:
+                    keys = new[] { Lines.Key(delete.Line) };
+                    break;
+                case TransitLineCommand line when line.Original != null:
+                    keys = new[] { Lines.Key(line.Original), Lines.Key(Result(line)) };
+                    break;
+                case TransitLineCommand line:
+                    keys = new[] { Lines.Key(Result(line)) };
+                    break;
+                default:
+                    keys = new string[0];
+                    break;
+            }
+
+            _keys[command] = keys;
+            return keys;
+        }
+
+        private static LineRef Result(TransitLineCommand line)
+        {
+            int count = line.Waypoints?.Length ?? 0;
+            var flat = new float[count * 3];
+            for (int i = 0; i < count; i++)
+            {
+                float3 p = NetRefs.V3(line.Waypoints[i].Position);
+                flat[i * 3] = p.x;
+                flat[i * 3 + 1] = p.y;
+                flat[i * 3 + 2] = p.z;
+            }
+
+            return new LineRef { Prefab = line.Prefab, Waypoints = flat };
+        }
+
+        private bool Touches(CommandBase command, HashSet<string> blocked)
+        {
+            if (blocked == null)
+            {
+                return false;
+            }
+
+            foreach (string key in Keys(command))
+            {
+                if (blocked.Contains(key))
+                {
+                    return true;
                 }
             }
 
-            return connections;
+            return false;
+        }
+
+        private void Block(CommandBase command, ref HashSet<string> blocked)
+        {
+            blocked ??= new HashSet<string>();
+            foreach (string key in Keys(command))
+            {
+                blocked.Add(key);
+            }
         }
 
         private void Delete(TransitLineDeleteCommand command)
@@ -494,7 +657,7 @@ namespace CS2M.BaseGame.Systems
                     continue;
                 }
 
-                ModifyPolicy(buffer, route, policy, data.Active, data.Adjustment);
+                ModifyPolicy(buffer, route, policy, data.Active, Inbound.PolicyAdjustment(EntityManager, policy, data.Adjustment));
             }
 
             foreach (KeyValuePair<Entity, Policy> pair in local)

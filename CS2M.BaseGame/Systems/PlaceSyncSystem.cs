@@ -267,7 +267,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class PlaceApplySystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<PlaceCommand> Pending = new ConcurrentQueue<PlaceCommand>();
+        public static readonly InboundQueue<PlaceCommand> Pending = new InboundQueue<PlaceCommand>("PlaceApplySystem", 1024, 16);
         private PrefabSystem _prefabSystem;
 
         protected override void OnCreate()
@@ -285,24 +285,31 @@ namespace CS2M.BaseGame.Systems
 
             while (Pending.TryDequeue(out PlaceCommand command))
             {
-                var buffer = new EntityCommandBuffer(Allocator.Temp);
-                DefinitionData[] definitions = command.Definitions ?? new DefinitionData[0];
-
-                // a permanent definition with an original would build a copy and hide the original, so
-                // moves, upgrades and removals of existing things are applied to them directly
-                int changed = ExistingParts.Apply(EntityManager, _prefabSystem, buffer, definitions);
-                int built = 0;
-                foreach (DefinitionData data in definitions)
+                try
                 {
-                    if (!data.HadOriginal && Definitions.Create(EntityManager, _prefabSystem, buffer, data))
-                    {
-                        built++;
-                    }
-                }
+                    var buffer = new EntityCommandBuffer(Allocator.Temp);
+                    DefinitionData[] definitions = command.Definitions ?? new DefinitionData[0];
 
-                buffer.Playback(EntityManager);
-                buffer.Dispose();
-                BaseGameLog.Info($"Placement received: {built} built, {changed} existing changed, of {definitions.Length} definition(s)");
+                    // a permanent definition with an original would build a copy and hide the original, so
+                    // moves, upgrades and removals of existing things are applied to them directly
+                    int changed = ExistingParts.Apply(EntityManager, _prefabSystem, buffer, definitions);
+                    int built = 0;
+                    foreach (DefinitionData data in definitions)
+                    {
+                        if (!data.HadOriginal && Definitions.Create(EntityManager, _prefabSystem, buffer, data))
+                        {
+                            built++;
+                        }
+                    }
+
+                    buffer.Playback(EntityManager);
+                    buffer.Dispose();
+                    BaseGameLog.Info($"Placement received: {built} built, {changed} existing changed, of {definitions.Length} definition(s)");
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(PlaceApplySystem), e);
+                }
             }
         }
     }

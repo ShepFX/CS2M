@@ -18,7 +18,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class RoadApplySystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<RoadCommand> Pending = new ConcurrentQueue<RoadCommand>();
+        public static readonly InboundQueue<RoadCommand> Pending = new InboundQueue<RoadCommand>("RoadApplySystem", 1024, 16);
 
         private PrefabSystem _prefabSystem;
         private EntityArchetype _definitionArchetype;
@@ -44,55 +44,63 @@ namespace CS2M.BaseGame.Systems
 
             while (Pending.TryDequeue(out RoadCommand command))
             {
-                int built = 0;
-                var buffer = new EntityCommandBuffer(Allocator.Temp);
-                foreach (NetCourseData data in command.Courses ?? new NetCourseData[0])
+                try
                 {
-                    Entity original = Entity.Null;
-                    if (data.Original != null && data.Original.Kind != 0 &&
-                        (!NetRefs.Resolve(EntityManager, data.Original, out original) || original == Entity.Null))
+                    int built = 0;
+                    var buffer = new EntityCommandBuffer(Allocator.Temp);
+                    foreach (NetCourseData data in command.Courses ?? new NetCourseData[0])
                     {
-                        BaseGameLog.Warn($"Road received that rebuilds a road missing here at {NetRefs.V3(data.Original.A)}");
-                        continue;
+                        Entity original = Entity.Null;
+                        if (data.Original != null && data.Original.Kind != 0 &&
+                            (!NetRefs.Resolve(EntityManager, data.Original, out original) || original == Entity.Null))
+                        {
+                            BaseGameLog.Warn($"Road received that rebuilds a road missing here at {NetRefs.V3(data.Original.A)}");
+                            continue;
+                        }
+
+                        Entity prefab = string.IsNullOrEmpty(data.Prefab) ? Entity.Null : PrefabLookup.Find(EntityManager, _prefabSystem, data.Prefab);
+                        if ((prefab == Entity.Null && (original == Entity.Null || !string.IsNullOrEmpty(data.Prefab))) ||
+                            (prefab != Entity.Null && !EntityManager.HasComponent<NetData>(prefab)))
+                        {
+                            BaseGameLog.Warn($"Road received with an unknown prefab {data.Prefab}");
+                            continue;
+                        }
+
+                        var definition = new CreationDefinition
+                        {
+                            m_Prefab = prefab,
+                            m_Original = original,
+                            m_Flags = (CreationFlags)data.CreationFlags | CreationFlags.Permanent,
+                            m_RandomSeed = data.RandomSeed
+                        };
+
+                        float[] c = data.Curve;
+                        var course = new NetCourse
+                        {
+                            m_Curve = new Bezier4x3(new float3(c[0], c[1], c[2]), new float3(c[3], c[4], c[5]),
+                                new float3(c[6], c[7], c[8]), new float3(c[9], c[10], c[11])),
+                            m_Elevation = new float2(data.Elevation[0], data.Elevation[1]),
+                            m_Length = data.Length,
+                            m_FixedIndex = data.FixedIndex,
+                            m_StartPosition = Pos(EntityManager, data.Start),
+                            m_EndPosition = Pos(EntityManager, data.End)
+                        };
+
+                        Entity entity = buffer.CreateEntity(_definitionArchetype);
+                        buffer.SetComponent(entity, definition);
+                        buffer.SetComponent(entity, course);
+                        built++;
                     }
 
-                    Entity prefab = string.IsNullOrEmpty(data.Prefab) ? Entity.Null : PrefabLookup.Find(EntityManager, _prefabSystem, data.Prefab);
-                    if (prefab == Entity.Null && (original == Entity.Null || !string.IsNullOrEmpty(data.Prefab)))
-                    {
-                        BaseGameLog.Warn($"Road received with an unknown prefab {data.Prefab}");
-                        continue;
-                    }
+                    buffer.Playback(EntityManager);
+                    buffer.Dispose();
 
-                    var definition = new CreationDefinition
-                    {
-                        m_Prefab = prefab,
-                        m_Original = original,
-                        m_Flags = (CreationFlags)data.CreationFlags | CreationFlags.Permanent,
-                        m_RandomSeed = data.RandomSeed
-                    };
-
-                    float[] c = data.Curve;
-                    var course = new NetCourse
-                    {
-                        m_Curve = new Bezier4x3(new float3(c[0], c[1], c[2]), new float3(c[3], c[4], c[5]),
-                            new float3(c[6], c[7], c[8]), new float3(c[9], c[10], c[11])),
-                        m_Elevation = new float2(data.Elevation[0], data.Elevation[1]),
-                        m_Length = data.Length,
-                        m_FixedIndex = data.FixedIndex,
-                        m_StartPosition = Pos(EntityManager, data.Start),
-                        m_EndPosition = Pos(EntityManager, data.End)
-                    };
-
-                    Entity entity = buffer.CreateEntity(_definitionArchetype);
-                    buffer.SetComponent(entity, definition);
-                    buffer.SetComponent(entity, course);
-                    built++;
+                    BaseGameLog.Info($"Road received: {built} of {command.Courses?.Length ?? 0} course(s) built");
                 }
-
-                buffer.Playback(EntityManager);
-                buffer.Dispose();
-
-                BaseGameLog.Info($"Road received: {built} of {command.Courses?.Length ?? 0} course(s) built");
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(RoadApplySystem), e);
+                }
             }
         }
 

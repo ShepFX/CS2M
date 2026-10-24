@@ -52,7 +52,6 @@ namespace CS2M.BaseGame.Systems
         private EntityQuery _createdEdges;
         private EntityQuery _deletedEdges;
         private EntityQuery _deletedNodes;
-        private EntityQuery _blocks;
 
         private readonly HashSet<Entity> _watchEdges = new HashSet<Entity>();
         private readonly HashSet<Entity> _resyncedBlocks = new HashSet<Entity>();
@@ -76,11 +75,6 @@ namespace CS2M.BaseGame.Systems
             {
                 All = new[] { ComponentType.ReadOnly<Node>(), ComponentType.ReadOnly<Deleted>() },
                 None = new[] { ComponentType.ReadOnly<Temp>() }
-            });
-            _blocks = GetEntityQuery(new EntityQueryDesc
-            {
-                All = new[] { ComponentType.ReadOnly<Block>(), ComponentType.ReadOnly<Cell>(), ComponentType.ReadOnly<Owner>() },
-                None = new[] { ComponentType.ReadOnly<Temp>(), ComponentType.ReadOnly<Deleted>() }
             });
         }
 
@@ -198,12 +192,21 @@ namespace CS2M.BaseGame.Systems
                 return;
             }
 
-            using (NativeArray<Entity> entities = _blocks.ToEntityArray(Allocator.Temp))
+            // only the blocks of the watched segments, through their SubBlock buffers, not every block in the city
+            foreach (Entity edge in _watchEdges)
             {
-                foreach (Entity entity in entities)
+                if (!EntityManager.Exists(edge) || !EntityManager.HasBuffer<SubBlock>(edge))
                 {
-                    if (_resyncedBlocks.Contains(entity) ||
-                        !_watchEdges.Contains(EntityManager.GetComponentData<Owner>(entity).m_Owner))
+                    continue;
+                }
+
+                DynamicBuffer<SubBlock> subBlocks = EntityManager.GetBuffer<SubBlock>(edge, true);
+                for (int b = 0; b < subBlocks.Length; b++)
+                {
+                    Entity entity = subBlocks[b].m_SubBlock;
+                    if (_resyncedBlocks.Contains(entity) || !EntityManager.Exists(entity) ||
+                        !EntityManager.HasComponent<Block>(entity) || !EntityManager.HasBuffer<Cell>(entity) ||
+                        EntityManager.HasComponent<Temp>(entity) || EntityManager.HasComponent<Deleted>(entity))
                     {
                         continue;
                     }
@@ -246,7 +249,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class NetDiffApplySystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<NetDiffCommand> Pending = new ConcurrentQueue<NetDiffCommand>();
+        public static readonly InboundQueue<NetDiffCommand> Pending = new InboundQueue<NetDiffCommand>("NetDiffApplySystem", 1024, 8);
 
         private PrefabSystem _prefabSystem;
         private EntityArchetype _archetype;
@@ -271,68 +274,75 @@ namespace CS2M.BaseGame.Systems
 
             while (Pending.TryDequeue(out NetDiffCommand command))
             {
-                var removed = new HashSet<Entity>();
-                int missing = 0;
-                foreach (NetRef netRef in command.DeletedEdges ?? new NetRef[0])
+                try
                 {
-                    if (NetRefs.Resolve(EntityManager, netRef, out Entity edge) && edge != Entity.Null)
+                    var removed = new HashSet<Entity>();
+                    int missing = 0;
+                    foreach (NetRef netRef in command.DeletedEdges ?? new NetRef[0])
                     {
-                        removed.Add(edge);
-                    }
-                    else
-                    {
-                        missing++;
-                    }
-                }
-
-                foreach (NetRef netRef in command.DeletedNodes ?? new NetRef[0])
-                {
-                    if (NetRefs.Resolve(EntityManager, netRef, out Entity node) && node != Entity.Null)
-                    {
-                        removed.Add(node);
-                    }
-                }
-
-                foreach (Entity entity in removed)
-                {
-                    EntityManager.AddComponent<Deleted>(entity);
-                }
-
-                var buffer = new EntityCommandBuffer(Allocator.Temp);
-                int built = 0;
-                foreach (EdgeData data in command.CreatedEdges ?? new EdgeData[0])
-                {
-                    Entity prefab = PrefabLookup.Find(EntityManager, _prefabSystem, data.Prefab);
-                    if (prefab == Entity.Null)
-                    {
-                        BaseGameLog.Warn($"Road received with an unknown prefab {data.Prefab}");
-                        continue;
+                        if (NetRefs.Resolve(EntityManager, netRef, out Entity edge) && edge != Entity.Null)
+                        {
+                            removed.Add(edge);
+                        }
+                        else
+                        {
+                            missing++;
+                        }
                     }
 
-                    float[] c = data.Curve;
-                    var curve = new Bezier4x3(new float3(c[0], c[1], c[2]), new float3(c[3], c[4], c[5]),
-                        new float3(c[6], c[7], c[8]), new float3(c[9], c[10], c[11]));
-                    Entity entity = buffer.CreateEntity(_archetype);
-                    buffer.SetComponent(entity, new CreationDefinition
+                    foreach (NetRef netRef in command.DeletedNodes ?? new NetRef[0])
                     {
-                        m_Prefab = prefab,
-                        m_Flags = CreationFlags.Permanent
-                    });
-                    buffer.SetComponent(entity, new NetCourse
-                    {
-                        m_Curve = curve,
-                        m_Elevation = new float2(data.Elevation[0], data.Elevation[1]),
-                        m_Length = MathUtils.Length(curve),
-                        m_FixedIndex = -1,
-                        m_StartPosition = End(NetRefs.V3(data.StartNode), MathUtils.StartTangent(curve), data.StartElevation, 0f, CoursePosFlags.IsFirst, removed),
-                        m_EndPosition = End(NetRefs.V3(data.EndNode), MathUtils.EndTangent(curve), data.EndElevation, 1f, CoursePosFlags.IsLast, removed)
-                    });
-                    built++;
-                }
+                        if (NetRefs.Resolve(EntityManager, netRef, out Entity node) && node != Entity.Null)
+                        {
+                            removed.Add(node);
+                        }
+                    }
 
-                buffer.Playback(EntityManager);
-                buffer.Dispose();
-                BaseGameLog.Info($"Roads received: {built} segment(s) built, {removed.Count} removed, {missing} to remove not found here");
+                    foreach (Entity entity in removed)
+                    {
+                        EntityManager.AddComponent<Deleted>(entity);
+                    }
+
+                    var buffer = new EntityCommandBuffer(Allocator.Temp);
+                    int built = 0;
+                    foreach (EdgeData data in command.CreatedEdges ?? new EdgeData[0])
+                    {
+                        Entity prefab = PrefabLookup.Find(EntityManager, _prefabSystem, data.Prefab);
+                        if (prefab == Entity.Null || !EntityManager.HasComponent<NetData>(prefab))
+                        {
+                            BaseGameLog.Warn($"Road received with an unknown prefab {data.Prefab}");
+                            continue;
+                        }
+
+                        float[] c = data.Curve;
+                        var curve = new Bezier4x3(new float3(c[0], c[1], c[2]), new float3(c[3], c[4], c[5]),
+                            new float3(c[6], c[7], c[8]), new float3(c[9], c[10], c[11]));
+                        Entity entity = buffer.CreateEntity(_archetype);
+                        buffer.SetComponent(entity, new CreationDefinition
+                        {
+                            m_Prefab = prefab,
+                            m_Flags = CreationFlags.Permanent
+                        });
+                        buffer.SetComponent(entity, new NetCourse
+                        {
+                            m_Curve = curve,
+                            m_Elevation = new float2(data.Elevation[0], data.Elevation[1]),
+                            m_Length = MathUtils.Length(curve),
+                            m_FixedIndex = -1,
+                            m_StartPosition = End(NetRefs.V3(data.StartNode), MathUtils.StartTangent(curve), data.StartElevation, 0f, CoursePosFlags.IsFirst, removed),
+                            m_EndPosition = End(NetRefs.V3(data.EndNode), MathUtils.EndTangent(curve), data.EndElevation, 1f, CoursePosFlags.IsLast, removed)
+                        });
+                        built++;
+                    }
+
+                    buffer.Playback(EntityManager);
+                    buffer.Dispose();
+                    BaseGameLog.Info($"Roads received: {built} segment(s) built, {removed.Count} removed, {missing} to remove not found here");
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(NetDiffApplySystem), e);
+                }
             }
         }
 

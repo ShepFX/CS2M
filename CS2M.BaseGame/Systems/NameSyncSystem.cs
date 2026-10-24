@@ -21,7 +21,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class NameSyncSystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<RenameCommand> Pending = new ConcurrentQueue<RenameCommand>();
+        public static readonly InboundQueue<RenameCommand> Pending = new InboundQueue<RenameCommand>("NameSyncSystem", 2048, 64);
 
         private const float CheckInterval = 0.25f;
 
@@ -59,7 +59,14 @@ namespace CS2M.BaseGame.Systems
 
             while (Pending.TryDequeue(out RenameCommand command))
             {
-                Apply(command);
+                try
+                {
+                    Apply(command);
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(NameSyncSystem), e);
+                }
             }
 
             float now = UnityEngine.Time.realtimeSinceStartup;

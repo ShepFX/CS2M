@@ -1,3 +1,5 @@
+using Colossal.Collections;
+using Colossal.Mathematics;
 using CS2M.BaseGame.Commands;
 using Game.Common;
 using Game.Net;
@@ -5,6 +7,7 @@ using Game.Prefabs;
 using Game.Tools;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Jobs;
 using Unity.Mathematics;
 
 namespace CS2M.BaseGame
@@ -54,6 +57,9 @@ namespace CS2M.BaseGame
 
         /// <summary>
         ///     Finds the local entity for a NetRef. Returns false if it should exist but wasn't found.
+        ///     Looks only near the position, in the game's own search trees (the ones its tools use), so a lookup
+        ///     costs about the same in a small town and a huge city. Entities created this frame are in the trees
+        ///     from the next frame on; callers that wait for something to appear retry anyway.
         /// </summary>
         public static bool Resolve(EntityManager em, NetRef netRef, out Entity entity, PrefabSystem prefabSystem = null)
         {
@@ -61,6 +67,11 @@ namespace CS2M.BaseGame
             if (netRef == null || netRef.Kind == 0)
             {
                 return true;
+            }
+
+            if (netRef.Kind < 1 || netRef.Kind > 3 || !Inbound.InMap(netRef.A) || (netRef.Kind == 2 && !Inbound.InMap(netRef.B)))
+            {
+                return false;
             }
 
             float3 a = V3(netRef.A);
@@ -72,52 +83,228 @@ namespace CS2M.BaseGame
                     return false;
                 }
 
-                using (EntityQuery query = em.CreateEntityQuery(new EntityQueryDesc
-                       {
-                           All = new[] { ComponentType.ReadOnly<Game.Objects.Transform>(), ComponentType.ReadOnly<PrefabRef>() },
-                           None = new[] { ComponentType.ReadOnly<Temp>(), ComponentType.ReadOnly<Deleted>() }
-                       }))
-                using (NativeArray<Entity> entities = query.ToEntityArray(Allocator.Temp))
-                using (NativeArray<Game.Objects.Transform> transforms = query.ToComponentDataArray<Game.Objects.Transform>(Allocator.Temp))
-                using (NativeArray<PrefabRef> prefabs = query.ToComponentDataArray<PrefabRef>(Allocator.Temp))
+                Game.Objects.SearchSystem objects = em.World?.GetExistingSystemManaged<Game.Objects.SearchSystem>();
+                if (objects == null)
                 {
-                    for (int i = 0; i < entities.Length; i++)
-                    {
-                        if (prefabs[i].m_Prefab == prefab && math.distancesq(transforms[i].m_Position, a) < MatchDistanceSq)
-                        {
-                            entity = entities[i];
-                            return true;
-                        }
-                    }
+                    return ScanObjects(em, prefab, a, out entity);
                 }
 
-                return false;
+                // static objects (buildings, props, trees, stops); vehicles and creatures are in the moving tree
+                NativeQuadTree<Entity, QuadTreeBoundsXZ> tree = objects.GetStaticSearchTree(true, out JobHandle staticDeps);
+                staticDeps.Complete();
+                if (NearestObject(em, tree, prefab, a, out entity))
+                {
+                    return true;
+                }
+
+                tree = objects.GetMovingSearchTree(true, out JobHandle movingDeps);
+                movingDeps.Complete();
+                return NearestObject(em, tree, prefab, a, out entity);
             }
 
-            if (netRef.Kind == 1)
+            Game.Net.SearchSystem nets = em.World?.GetExistingSystemManaged<Game.Net.SearchSystem>();
+            if (nets == null)
             {
-                using (EntityQuery query = em.CreateEntityQuery(new EntityQueryDesc
-                       {
-                           All = new[] { ComponentType.ReadOnly<Node>() },
-                           None = new[] { ComponentType.ReadOnly<Temp>(), ComponentType.ReadOnly<Deleted>() }
-                       }))
-                using (NativeArray<Entity> entities = query.ToEntityArray(Allocator.Temp))
-                using (NativeArray<Node> nodes = query.ToComponentDataArray<Node>(Allocator.Temp))
-                {
-                    for (int i = 0; i < nodes.Length; i++)
-                    {
-                        if (math.distancesq(nodes[i].m_Position, a) < MatchDistanceSq)
-                        {
-                            entity = entities[i];
-                            return true;
-                        }
-                    }
-                }
-
-                return false;
+                return netRef.Kind == 1 ? ScanNodes(em, a, out entity) : ScanEdges(em, a, V3(netRef.B), out entity);
             }
 
-            float3 b = V3(netRef.B);
+            NativeQuadTree<Entity, QuadTreeBoundsXZ> netTree = nets.GetNetSearchTree(true, out JobHandle netDeps);
+            netDeps.Complete();
+            return netRef.Kind == 1 ? NearestNode(em, netTree, a, out entity) : NearestEdge(em, netTree, a, V3(netRef.B), out entity);
+        }
+
+        // ---------- search tree lookups ----------
+
+        private struct Collector : INativeQuadTreeIterator<Entity, QuadTreeBoundsXZ>, IUnsafeQuadTreeIterator<Entity, QuadTreeBoundsXZ>
+        {
+            public Bounds2 Bounds;
+            public NativeList<Entity> Found;
+
+            public bool Intersect(QuadTreeBoundsXZ bounds) => MathUtils.Intersect(bounds.m_Bounds.xz, Bounds);
+
+            public void Iterate(QuadTreeBoundsXZ bounds, Entity item)
+            {
+                if (MathUtils.Intersect(bounds.m_Bounds.xz, Bounds))
+                {
+                    Found.Add(item);
+                }
+            }
+        }
+
+        private static NativeList<Entity> Near(NativeQuadTree<Entity, QuadTreeBoundsXZ> tree, float3 position)
+        {
+            float radius = math.sqrt(MatchDistanceSq);
+            var collector = new Collector
+            {
+                Bounds = new Bounds2(position.xz - radius, position.xz + radius),
+                Found = new NativeList<Entity>(16, Allocator.Temp)
+            };
+            tree.Iterate(ref collector);
+            return collector.Found;
+        }
+
+        private static bool Live(EntityManager em, Entity entity) =>
+            em.Exists(entity) && !em.HasComponent<Temp>(entity) && !em.HasComponent<Deleted>(entity);
+
+        private static bool NearestObject(EntityManager em, NativeQuadTree<Entity, QuadTreeBoundsXZ> tree, Entity prefab, float3 a, out Entity entity)
+        {
+            entity = Entity.Null;
+            float best = MatchDistanceSq;
+            NativeList<Entity> found = Near(tree, a);
+            try
+            {
+                for (int i = 0; i < found.Length; i++)
+                {
+                    Entity candidate = found[i];
+                    if (!Live(em, candidate) || !em.HasComponent<PrefabRef>(candidate) ||
+                        !em.HasComponent<Game.Objects.Transform>(candidate) ||
+                        em.GetComponentData<PrefabRef>(candidate).m_Prefab != prefab)
+                    {
+                        continue;
+                    }
+
+                    float distance = math.distancesq(em.GetComponentData<Game.Objects.Transform>(candidate).m_Position, a);
+                    if (distance < best)
+                    {
+                        best = distance;
+                        entity = candidate;
+                    }
+                }
+            }
+            finally
+            {
+                found.Dispose();
+            }
+
+            return entity != Entity.Null;
+        }
+
+        private static bool NearestNode(EntityManager em, NativeQuadTree<Entity, QuadTreeBoundsXZ> tree, float3 a, out Entity entity)
+        {
+            entity = Entity.Null;
+            float best = MatchDistanceSq;
+            NativeList<Entity> found = Near(tree, a);
+            try
+            {
+                for (int i = 0; i < found.Length; i++)
+                {
+                    Entity candidate = found[i];
+                    if (!em.HasComponent<Node>(candidate) || !Live(em, candidate))
+                    {
+                        continue;
+                    }
+
+                    float distance = math.distancesq(em.GetComponentData<Node>(candidate).m_Position, a);
+                    if (distance < best)
+                    {
+                        best = distance;
+                        entity = candidate;
+                    }
+                }
+            }
+            finally
+            {
+                found.Dispose();
+            }
+
+            return entity != Entity.Null;
+        }
+
+        private static bool NearestEdge(EntityManager em, NativeQuadTree<Entity, QuadTreeBoundsXZ> tree, float3 a, float3 b, out Entity entity)
+        {
+            entity = Entity.Null;
+            float best = float.MaxValue;
+            NativeList<Entity> found = Near(tree, a);
+            try
+            {
+                for (int i = 0; i < found.Length; i++)
+                {
+                    Entity candidate = found[i];
+                    if (!em.HasComponent<Edge>(candidate) || !em.HasComponent<Curve>(candidate) || !Live(em, candidate))
+                    {
+                        continue;
+                    }
+
+                    Curve curve = em.GetComponentData<Curve>(candidate);
+                    if (EdgeDistance(curve, a, b, out float distance) && distance < best)
+                    {
+                        best = distance;
+                        entity = candidate;
+                    }
+                }
+            }
+            finally
+            {
+                found.Dispose();
+            }
+
+            return entity != Entity.Null;
+        }
+
+        private static bool EdgeDistance(Curve curve, float3 a, float3 b, out float distance)
+        {
+            float3 ca = curve.m_Bezier.a;
+            float3 cd = curve.m_Bezier.d;
+            float forward = math.max(math.distancesq(ca, a), math.distancesq(cd, b));
+            float backward = math.max(math.distancesq(ca, b), math.distancesq(cd, a));
+            distance = math.min(forward, backward);
+            return distance < MatchDistanceSq;
+        }
+
+        // ---------- full scans, only if the search systems aren't there ----------
+
+        private static bool ScanObjects(EntityManager em, Entity prefab, float3 a, out Entity entity)
+        {
+            entity = Entity.Null;
+            using (EntityQuery query = em.CreateEntityQuery(new EntityQueryDesc
+                   {
+                       All = new[] { ComponentType.ReadOnly<Game.Objects.Transform>(), ComponentType.ReadOnly<PrefabRef>() },
+                       None = new[] { ComponentType.ReadOnly<Temp>(), ComponentType.ReadOnly<Deleted>() }
+                   }))
+            using (NativeArray<Entity> entities = query.ToEntityArray(Allocator.Temp))
+            using (NativeArray<Game.Objects.Transform> transforms = query.ToComponentDataArray<Game.Objects.Transform>(Allocator.Temp))
+            using (NativeArray<PrefabRef> prefabs = query.ToComponentDataArray<PrefabRef>(Allocator.Temp))
+            {
+                for (int i = 0; i < entities.Length; i++)
+                {
+                    if (prefabs[i].m_Prefab == prefab && math.distancesq(transforms[i].m_Position, a) < MatchDistanceSq)
+                    {
+                        entity = entities[i];
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static bool ScanNodes(EntityManager em, float3 a, out Entity entity)
+        {
+            entity = Entity.Null;
+            using (EntityQuery query = em.CreateEntityQuery(new EntityQueryDesc
+                   {
+                       All = new[] { ComponentType.ReadOnly<Node>() },
+                       None = new[] { ComponentType.ReadOnly<Temp>(), ComponentType.ReadOnly<Deleted>() }
+                   }))
+            using (NativeArray<Entity> entities = query.ToEntityArray(Allocator.Temp))
+            using (NativeArray<Node> nodes = query.ToComponentDataArray<Node>(Allocator.Temp))
+            {
+                for (int i = 0; i < nodes.Length; i++)
+                {
+                    if (math.distancesq(nodes[i].m_Position, a) < MatchDistanceSq)
+                    {
+                        entity = entities[i];
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static bool ScanEdges(EntityManager em, float3 a, float3 b, out Entity entity)
+        {
+            entity = Entity.Null;
             using (EntityQuery query = em.CreateEntityQuery(new EntityQueryDesc
                    {
                        All = new[] { ComponentType.ReadOnly<Edge>(), ComponentType.ReadOnly<Curve>() },
@@ -128,10 +315,7 @@ namespace CS2M.BaseGame
             {
                 for (int i = 0; i < curves.Length; i++)
                 {
-                    float3 ca = curves[i].m_Bezier.a;
-                    float3 cd = curves[i].m_Bezier.d;
-                    if ((math.distancesq(ca, a) < MatchDistanceSq && math.distancesq(cd, b) < MatchDistanceSq) ||
-                        (math.distancesq(ca, b) < MatchDistanceSq && math.distancesq(cd, a) < MatchDistanceSq))
+                    if (EdgeDistance(curves[i], a, b, out _))
                     {
                         entity = entities[i];
                         return true;

@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using Colossal.UI.Binding;
+using CS2M.API.Commands;
 using Game.Rendering;
 using Game.UI;
 using Unity.Mathematics;
@@ -17,10 +19,19 @@ namespace CS2M.BaseGame.Systems
         private CameraUpdateSystem _cameraUpdateSystem;
         private ValueBinding<string> _cursors;
         private string _last = "[]";
+        private readonly StringBuilder _cursorJson = new StringBuilder();
+
+        // each cursor's name, activity and colour, escaped once per change instead of every frame
+        private readonly Dictionary<CursorSystem.RemoteCursor, string> _labels = new Dictionary<CursorSystem.RemoteCursor, string>();
+        private readonly Dictionary<CursorSystem.RemoteCursor, string> _colours = new Dictionary<CursorSystem.RemoteCursor, string>();
+        private int _labelsVersion = -1;
 
         // Players for the multiplayer HUD: [{"n": name, "c": colour, "a": activity, "me": bool}], empty when not in a session
         private ValueBinding<string> _players;
         private string _lastPlayers = "[]";
+        private int _playersVersion = -1;
+        private MultiplayerRole _playersRole = MultiplayerRole.None;
+        private string _playersLocalName;
 
         protected override void OnCreate()
         {
@@ -33,10 +44,13 @@ namespace CS2M.BaseGame.Systems
         protected override void OnUpdate()
         {
             UpdatePlayers();
-            string json = "[]";
+            UpdateLabels();
+
+            // positions move every frame while a cursor glides or the camera turns, so this one is built each
+            // frame, from cached pieces, and only turned into a string when it differs from the last one
+            _cursorJson.Clear().Append('[');
             if (CursorSystem.Remote.Count != 0 && _cameraUpdateSystem.TryGetViewer(out Viewer viewer))
             {
-                var sb = new StringBuilder("[");
                 foreach (CursorSystem.RemoteCursor cursor in CursorSystem.Remote.Values)
                 {
                     if (!cursor.OnMap)
@@ -50,38 +64,64 @@ namespace CS2M.BaseGame.Systems
                         continue;
                     }
 
-                    if (sb.Length > 1)
+                    if (_cursorJson.Length > 1)
                     {
-                        sb.Append(',');
+                        _cursorJson.Append(',');
                     }
 
-                    sb.Append("{\"n\":\"").Append(Escape(cursor.Name))
-                        .Append("\",\"a\":\"").Append(Escape(cursor.Activity))
-                        .Append("\",\"x\":").Append(Pct(screen.x / Screen.width))
+                    _cursorJson.Append(_labels.TryGetValue(cursor, out string label) ? label : "{\"n\":\"\",\"a\":\"\"")
+                        .Append(",\"x\":").Append(Pct(screen.x / Screen.width))
                         .Append(",\"y\":").Append(Pct(1f - screen.y / Screen.height))
-                        .Append(",\"c\":\"#").Append(ColorUtility.ToHtmlStringRGB(cursor.Color)).Append("\"}");
+                        .Append(",\"c\":\"#").Append(_colours.TryGetValue(cursor, out string colour) ? colour : "FFFFFF").Append("\"}");
                 }
-
-                json = sb.Append(']').ToString();
             }
 
-            if (json != _last)
+            _cursorJson.Append(']');
+            if (!Same(_cursorJson, _last))
             {
-                _cursors.Update(json);
-                _last = json;
+                _last = _cursorJson.ToString();
+                _cursors.Update(_last);
+            }
+        }
+
+        private void UpdateLabels()
+        {
+            if (_labelsVersion == CursorSystem.Version)
+            {
+                return;
+            }
+
+            _labelsVersion = CursorSystem.Version;
+            _labels.Clear();
+            _colours.Clear();
+            foreach (CursorSystem.RemoteCursor cursor in CursorSystem.Remote.Values)
+            {
+                _labels[cursor] = "{\"n\":\"" + Escape(cursor.Name) + "\",\"a\":\"" + Escape(cursor.Activity) + "\"";
+                _colours[cursor] = ColorUtility.ToHtmlStringRGB(cursor.Color);
             }
         }
 
         private void UpdatePlayers()
         {
-            string json = "[]";
-            if (CS2M.API.Commands.Command.CurrentRole != CS2M.API.Commands.MultiplayerRole.None)
+            MultiplayerRole role = Command.CurrentRole;
+            string localName = role == MultiplayerRole.None ? null : Command.GetLocalUsername?.Invoke();
+            if (_playersVersion == CursorSystem.Version && _playersRole == role && _playersLocalName == localName)
             {
-                string role = CS2M.API.Commands.Command.CurrentRole == CS2M.API.Commands.MultiplayerRole.Server ? " (host)" : "";
+                return;
+            }
+
+            _playersVersion = CursorSystem.Version;
+            _playersRole = role;
+            _playersLocalName = localName;
+
+            string json = "[]";
+            if (role != MultiplayerRole.None)
+            {
+                string suffix = role == MultiplayerRole.Server ? " (host)" : "";
                 var sb = new StringBuilder("[");
-                sb.Append("{\"n\":\"").Append(Escape((CS2M.API.Commands.Command.GetLocalUsername?.Invoke() ?? "You") + role))
+                sb.Append("{\"n\":\"").Append(Escape((localName ?? "You") + suffix))
                     .Append("\",\"c\":\"#D6FF3F\",\"a\":\"\",\"me\":true}");
-                foreach (System.Collections.Generic.KeyValuePair<int, CursorSystem.RemoteCursor> pair in CursorSystem.Remote)
+                foreach (KeyValuePair<int, CursorSystem.RemoteCursor> pair in CursorSystem.Remote)
                 {
                     CursorSystem.RemoteCursor cursor = pair.Value;
                     sb.Append(",{\"id\":").Append(pair.Key).Append(",\"n\":\"").Append(Escape(cursor.Name))
@@ -97,6 +137,24 @@ namespace CS2M.BaseGame.Systems
                 _players.Update(json);
                 _lastPlayers = json;
             }
+        }
+
+        private static bool Same(StringBuilder sb, string text)
+        {
+            if (sb.Length != text.Length)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (sb[i] != text[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static string Pct(float value) =>

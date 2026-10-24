@@ -23,7 +23,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class PolicySyncSystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<PolicyCommand> Pending = new ConcurrentQueue<PolicyCommand>();
+        public static readonly InboundQueue<PolicyCommand> Pending = new InboundQueue<PolicyCommand>("PolicySyncSystem", 2048, 64);
 
         private const float CheckInterval = 0.5f;
 
@@ -74,7 +74,14 @@ namespace CS2M.BaseGame.Systems
             float now = UnityEngine.Time.realtimeSinceStartup;
             while (Pending.TryDequeue(out PolicyCommand command))
             {
-                Apply(command, now);
+                try
+                {
+                    Apply(command, now);
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(PolicySyncSystem), e);
+                }
             }
 
             if (now - _lastCheck < CheckInterval || Command.SendToAll == null)
@@ -137,7 +144,7 @@ namespace CS2M.BaseGame.Systems
 
             var buffer = new EntityCommandBuffer(Allocator.Temp);
             Entity entity = buffer.CreateEntity(_modifyArchetype);
-            buffer.SetComponent(entity, new Modify(target, policy, command.Active, command.Adjustment));
+            buffer.SetComponent(entity, new Modify(target, policy, command.Active, Inbound.PolicyAdjustment(EntityManager, policy, command.Adjustment)));
             buffer.Playback(EntityManager);
             buffer.Dispose();
 

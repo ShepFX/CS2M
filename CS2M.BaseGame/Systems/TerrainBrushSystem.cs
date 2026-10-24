@@ -151,7 +151,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class TerrainBrushApplySystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<TerrainBrushCommand> Pending = new ConcurrentQueue<TerrainBrushCommand>();
+        public static readonly InboundQueue<TerrainBrushCommand> Pending = new InboundQueue<TerrainBrushCommand>("TerrainBrushApplySystem", 4096, 16);
 
         // TerrainSystem.ApplyToTerrain's small-strength curve and delta clamp
         private const float SmallStrength = 0.002f;
@@ -177,21 +177,33 @@ namespace CS2M.BaseGame.Systems
                 return;
             }
 
-            while (Pending.TryDequeue(out TerrainBrushCommand command))
+            // every stamp is a GPU dispatch: at most this many per frame, the rest waits for the next frame
+            int stamps = 0;
+            while (stamps < MaxStampsPerFrame && Pending.TryDequeue(out TerrainBrushCommand command))
             {
-                Apply(command);
+                try
+                {
+                    stamps += Apply(command);
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(TerrainBrushApplySystem), e);
+                }
             }
         }
 
-        private void Apply(TerrainBrushCommand command)
+        private const int MaxStampsPerFrame = 256;
+
+        // the handler checked the stamps: whole, finite, on the map, size and strength within the tool's range
+        private int Apply(TerrainBrushCommand command)
         {
             Entity tool = PrefabLookup.Find(EntityManager, _prefabSystem, command.Tool);
             Entity brushPrefab = PrefabLookup.Find(EntityManager, _prefabSystem, command.Brush);
             if (tool == Entity.Null || brushPrefab == Entity.Null || !EntityManager.HasComponent<TerraformingData>(tool) ||
                 !_prefabSystem.TryGetPrefab(brushPrefab, out BrushPrefab brushData))
             {
-                BaseGameLog.Warn($"Terrain received with unknown tool or brush: {command.Tool}, {command.Brush}");
-                return;
+                Inbound.Warn("terrain-prefab", $"Terrain received with unknown tool or brush: {command.Tool}, {command.Brush}");
+                return 0;
             }
 
             TerraformingData terraforming = EntityManager.GetComponentData<TerraformingData>(tool);
@@ -226,6 +238,7 @@ namespace CS2M.BaseGame.Systems
             }
 
             BaseGameLog.Info($"Terrain received: {count} stamp(s) of {command.Tool}");
+            return count;
         }
 
         // Same rules as ApplyBrushesSystem.ApplyHeight

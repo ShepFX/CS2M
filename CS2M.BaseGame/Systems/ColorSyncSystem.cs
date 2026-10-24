@@ -18,7 +18,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class ColorSyncSystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<ColorCommand> Pending = new ConcurrentQueue<ColorCommand>();
+        public static readonly InboundQueue<ColorCommand> Pending = new InboundQueue<ColorCommand>("ColorSyncSystem", 2048, 64);
 
         private const float CheckInterval = 0.25f;
 
@@ -45,7 +45,14 @@ namespace CS2M.BaseGame.Systems
 
             while (Pending.TryDequeue(out ColorCommand command))
             {
-                Apply(command);
+                try
+                {
+                    Apply(command);
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(ColorSyncSystem), e);
+                }
             }
 
             float now = UnityEngine.Time.realtimeSinceStartup;

@@ -1,19 +1,11 @@
-using CS2M.API.Commands;
 using CS2M.BaseGame.Commands;
 using CS2M.BaseGame.Systems;
 
 namespace CS2M.BaseGame.Injections
 {
-    public class RoadHandler : CommandHandler<RoadCommand>
+    public class RoadHandler : GuardedHandler<RoadCommand>
     {
-        public RoadHandler()
-        {
-            TransactionCmd = false;
-        }
-
-        protected override void Handle(RoadCommand command)
-        {
-            RoadApplySystem.Pending.Enqueue(command);
-        }
+        protected override bool Validate(RoadCommand command) => CommandValidation.Validate(command);
+        protected override void Apply(RoadCommand command) => RoadApplySystem.Pending.Enqueue(command);
     }
 }

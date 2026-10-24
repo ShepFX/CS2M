@@ -135,7 +135,7 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class WaterSourceApplySystem : GameSystemBase
     {
-        public static readonly ConcurrentQueue<WaterSourceCommand> Pending = new ConcurrentQueue<WaterSourceCommand>();
+        public static readonly InboundQueue<WaterSourceCommand> Pending = new InboundQueue<WaterSourceCommand>("WaterSourceApplySystem", 256, 16);
 
         // Sources are found by their horizontal position; the water simulation may adjust the height
         private const float MatchDistanceSq = 1f;
@@ -164,15 +164,22 @@ namespace CS2M.BaseGame.Systems
 
             while (Pending.TryDequeue(out WaterSourceCommand command))
             {
-                var buffer = new EntityCommandBuffer(Allocator.Temp);
-                var claimed = new HashSet<Entity>();
-                foreach (WaterSourceChange change in command.Changes ?? new WaterSourceChange[0])
+                try
                 {
-                    Apply(buffer, change, claimed);
-                }
+                    var buffer = new EntityCommandBuffer(Allocator.Temp);
+                    var claimed = new HashSet<Entity>();
+                    foreach (WaterSourceChange change in command.Changes ?? new WaterSourceChange[0])
+                    {
+                        Apply(buffer, change, claimed);
+                    }
 
-                buffer.Playback(EntityManager);
-                buffer.Dispose();
+                    buffer.Playback(EntityManager);
+                    buffer.Dispose();
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(WaterSourceApplySystem), e);
+                }
             }
         }
 

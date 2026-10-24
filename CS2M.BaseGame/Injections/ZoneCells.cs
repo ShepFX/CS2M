@@ -1,20 +1,12 @@
-using CS2M.API.Commands;
 using CS2M.BaseGame.Commands;
 using CS2M.BaseGame.Systems;
 
 namespace CS2M.BaseGame.Injections
 {
-    public class ZoneCellsHandler : CommandHandler<ZoneCellsCommand>
+    // Entity changes happen in ZoneApplySystem on the game's update, not on the network callback
+    public class ZoneCellsHandler : GuardedHandler<ZoneCellsCommand>
     {
-        public ZoneCellsHandler()
-        {
-            TransactionCmd = false;
-        }
-
-        protected override void Handle(ZoneCellsCommand command)
-        {
-            // Entity changes happen in ZoneApplySystem on the game's update, not on the network callback
-            ZoneApplySystem.Pending.Enqueue(command);
-        }
+        protected override bool Validate(ZoneCellsCommand command) => CommandValidation.Validate(command);
+        protected override void Apply(ZoneCellsCommand command) => ZoneApplySystem.Pending.Enqueue(command);
     }
 }

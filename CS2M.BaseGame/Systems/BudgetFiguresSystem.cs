@@ -64,7 +64,10 @@ namespace CS2M.BaseGame.Systems
             HostUpkeep.Clear();
             for (int i = 0; i < (command.Services?.Length ?? 0) && i < (command.Upkeep?.Length ?? 0); i++)
             {
-                HostUpkeep[command.Services[i]] = command.Upkeep[i];
+                if (command.Services[i] != null)
+                {
+                    HostUpkeep[command.Services[i]] = command.Upkeep[i];
+                }
             }
         }
 

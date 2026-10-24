@@ -1,60 +1,42 @@
-using CS2M.API.Commands;
 using CS2M.BaseGame.Commands;
 using CS2M.BaseGame.Systems;
 
 namespace CS2M.BaseGame.Injections
 {
-    // Host to joiners: the host's progression. Joiners to host: requests the host applies once.
-
-    public class ProgressionHandler : CommandHandler<ProgressionCommand>
+    // Host to joiners: the host's progression. Joiners to host: requests the host applies once (never relayed).
+    public class ProgressionHandler : GuardedHandler<ProgressionCommand>
     {
-        public ProgressionHandler() { TransactionCmd = false; }
-        protected override void Handle(ProgressionCommand command) => ProgressionSyncSystem.Pending.Enqueue(command);
+        protected override bool Validate(ProgressionCommand command) => CommandValidation.Validate(command);
+        protected override void Apply(ProgressionCommand command) => ProgressionSyncSystem.Pending.Enqueue(command);
     }
 
-    public class DevTreeHandler : CommandHandler<DevTreeCommand>
+    public class DevTreeHandler : GuardedHandler<DevTreeCommand>
     {
-        public DevTreeHandler() { TransactionCmd = false; }
-        protected override void Handle(DevTreeCommand command) => ProgressionSyncSystem.Pending.Enqueue(command);
+        protected override bool Validate(DevTreeCommand command) => CommandValidation.Validate(command);
+        protected override void Apply(DevTreeCommand command) => ProgressionSyncSystem.Pending.Enqueue(command);
     }
 
-    public class LoanRequestHandler : CommandHandler<LoanRequestCommand>
+    public class LoanRequestHandler : GuardedHandler<LoanRequestCommand>
     {
-        public LoanRequestHandler()
-        {
-            TransactionCmd = false;
-            // only the host applies it; the result reaches everyone through ProgressionCommand and MoneyCommand
-            RelayOnServer = false;
-        }
-
-        protected override void Handle(LoanRequestCommand command) => ProgressionSyncSystem.Pending.Enqueue(command);
+        protected override bool Validate(LoanRequestCommand command) => CommandValidation.Validate(command);
+        protected override void Apply(LoanRequestCommand command) => ProgressionSyncSystem.Pending.Enqueue(command);
     }
 
-    public class DevTreeRequestHandler : CommandHandler<DevTreeRequestCommand>
+    public class DevTreeRequestHandler : GuardedHandler<DevTreeRequestCommand>
     {
-        public DevTreeRequestHandler()
-        {
-            TransactionCmd = false;
-            RelayOnServer = false;
-        }
-
-        protected override void Handle(DevTreeRequestCommand command) => ProgressionSyncSystem.Pending.Enqueue(command);
+        protected override bool Validate(DevTreeRequestCommand command) => CommandValidation.Validate(command);
+        protected override void Apply(DevTreeRequestCommand command) => ProgressionSyncSystem.Pending.Enqueue(command);
     }
 
-    public class MapTilesHandler : CommandHandler<MapTilesCommand>
+    public class MapTilesHandler : GuardedHandler<MapTilesCommand>
     {
-        public MapTilesHandler() { TransactionCmd = false; }
-        protected override void Handle(MapTilesCommand command) => MapTileSyncSystem.Pending.Enqueue(command);
+        protected override bool Validate(MapTilesCommand command) => CommandValidation.Validate(command);
+        protected override void Apply(MapTilesCommand command) => MapTileSyncSystem.Pending.Enqueue(command);
     }
 
-    public class TilePurchaseRequestHandler : CommandHandler<TilePurchaseRequestCommand>
+    public class TilePurchaseRequestHandler : GuardedHandler<TilePurchaseRequestCommand>
     {
-        public TilePurchaseRequestHandler()
-        {
-            TransactionCmd = false;
-            RelayOnServer = false;
-        }
-
-        protected override void Handle(TilePurchaseRequestCommand command) => MapTileSyncSystem.Pending.Enqueue(command);
+        protected override bool Validate(TilePurchaseRequestCommand command) => CommandValidation.Validate(command);
+        protected override void Apply(TilePurchaseRequestCommand command) => MapTileSyncSystem.Pending.Enqueue(command);
     }
 }

@@ -1,34 +1,31 @@
-using CS2M.API.Commands;
 using CS2M.BaseGame.Commands;
 using CS2M.BaseGame.Systems;
 
 namespace CS2M.BaseGame.Injections
 {
-    public class TaxHandler : CommandHandler<TaxCommand>
+    public class TaxHandler : GuardedHandler<TaxCommand>
     {
-        public TaxHandler() { TransactionCmd = false; }
-        protected override void Handle(TaxCommand command) => EconomySyncSystem.Pending.Enqueue(command);
+        protected override bool Validate(TaxCommand command) => CommandValidation.Validate(command);
+        protected override void Apply(TaxCommand command) => EconomySyncSystem.Pending.Enqueue(command);
     }
 
-    public class BudgetHandler : CommandHandler<BudgetCommand>
+    public class BudgetHandler : GuardedHandler<BudgetCommand>
     {
-        public BudgetHandler() { TransactionCmd = false; }
-        protected override void Handle(BudgetCommand command) => EconomySyncSystem.Pending.Enqueue(command);
+        protected override bool Validate(BudgetCommand command) => CommandValidation.Validate(command);
+        protected override void Apply(BudgetCommand command) => EconomySyncSystem.Pending.Enqueue(command);
     }
 
-    public class PopulationHandler : CommandHandler<PopulationCommand>
+    // host to joiners only
+    public class PopulationHandler : GuardedHandler<PopulationCommand>
     {
-        public PopulationHandler() { TransactionCmd = false; }
-        protected override void Handle(PopulationCommand command) => PopulationDisplaySystem.Latest = command;
+        protected override bool Validate(PopulationCommand command) => CommandValidation.Validate(command);
+        protected override void Apply(PopulationCommand command) => PopulationDisplaySystem.Latest = command;
     }
-}
 
-namespace CS2M.BaseGame.Injections
-{
-    public class BudgetFiguresHandler : CS2M.API.Commands.CommandHandler<CS2M.BaseGame.Commands.BudgetFiguresCommand>
+    // host to joiners only
+    public class BudgetFiguresHandler : GuardedHandler<BudgetFiguresCommand>
     {
-        public BudgetFiguresHandler() { TransactionCmd = false; }
-        protected override void Handle(CS2M.BaseGame.Commands.BudgetFiguresCommand command) =>
-            CS2M.BaseGame.Systems.BudgetFiguresSystem.Receive(command);
+        protected override bool Validate(BudgetFiguresCommand command) => CommandValidation.Validate(command);
+        protected override void Apply(BudgetFiguresCommand command) => BudgetFiguresSystem.Receive(command);
     }
 }
