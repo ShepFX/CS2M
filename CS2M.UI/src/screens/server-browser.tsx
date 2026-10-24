@@ -157,8 +157,8 @@ const SessionRow = ({session, check, selected, onSelect}: {
                     {session.hasPassword && <img className={styles.lock} src="Media/Glyphs/Lock.svg"/>}
                 </div>
                 {details && <div className={styles.citySub}>
-                    {translate("CS2M.UI.Browser.Pop")} <LocalizedNumber value={details.population} unit={Unit.Integer}/>
-                    {details.milestone > 0 && " · " + milestoneName(translate, details.milestone)}
+                    {`${translate("CS2M.UI.Browser.Pop") ?? ""} ${details.population.toLocaleString()}` +
+                        (details.milestone > 0 ? " · " + milestoneName(translate, details.milestone) : "")}
                 </div>}
             </div>
             <div className={styles.colHost}>{session.host || "-"}</div>
@@ -258,17 +258,17 @@ const JoinArea = ({label, reason, onJoin, extra}: {
     );
 }
 
-const LastJoined = ({time}: { time: number }) => {
-    const {translate} = useLocalization();
+// Returned as a plain string: in these flex columns every separate text node lands on its own line
+function lastJoined(translate: (id: string) => string | null, time: number): string {
     const minutes = Math.max(0, Math.floor((Date.now() / 1000 - time) / 60));
     if (minutes < 60) {
-        return <>{format(translate("CS2M.UI.Browser.MinutesAgo"), {N: minutes})}</>;
+        return format(translate("CS2M.UI.Browser.MinutesAgo"), {N: minutes});
     }
     const hours = Math.floor(minutes / 60);
     if (hours < 48) {
-        return <>{format(translate("CS2M.UI.Browser.HoursAgo"), {N: hours})}</>;
+        return format(translate("CS2M.UI.Browser.HoursAgo"), {N: hours});
     }
-    return <>{format(translate("CS2M.UI.Browser.DaysAgo"), {N: Math.floor(hours / 24)})}</>;
+    return format(translate("CS2M.UI.Browser.DaysAgo"), {N: Math.floor(hours / 24)});
 }
 
 /**
@@ -433,8 +433,8 @@ export const MultiplayerScreen = () => {
                                     </span>
                                 </div>
                                 <div className={styles.citySub}>
-                                    {translate(entry.ip ? "CS2M.UI.Browser.DirectEntry" : "CS2M.UI.Browser.LobbyEntry")}
-                                    {entry.time > 0 && <> · <LastJoined time={entry.time}/></>}
+                                    {(translate(entry.ip ? "CS2M.UI.Browser.DirectEntry" : "CS2M.UI.Browser.LobbyEntry") ?? "") +
+                                        (entry.time > 0 ? " · " + lastJoined(translate, entry.time) : "")}
                                 </div>
                             </div>
                             <div className={styles.colHost}>{entry.host || "-"}</div>
@@ -497,7 +497,7 @@ export const MultiplayerScreen = () => {
             details = <div className={styles.detInner}>
                 <div className={styles.detTitle}>{`${entry.ip}:${entry.port}`}</div>
                 <div className={styles.detSub}>
-                    {translate("CS2M.UI.Browser.DirectEntry")}{entry.time > 0 && <> · <LastJoined time={entry.time}/></>}
+                    {(translate("CS2M.UI.Browser.DirectEntry") ?? "") + (entry.time > 0 ? " · " + lastJoined(translate, entry.time) : "")}
                 </div>
             </div>;
             joinArea = <JoinArea label={againLabel} reason={null} onJoin={() => joinAddress(entry.ip, entry.port)}
@@ -511,8 +511,8 @@ export const MultiplayerScreen = () => {
             details = <div className={styles.detInner}>
                 <div className={styles.detTitle}>{entry.name || translate("CS2M.UI.Lobby.Unnamed")}</div>
                 <div className={styles.detSub}>
-                    {format(translate("CS2M.UI.Browser.HostedBy"), {HOST: entry.host || "-"})}
-                    {entry.time > 0 && <> · <LastJoined time={entry.time}/></>}
+                    {format(translate("CS2M.UI.Browser.HostedBy"), {HOST: entry.host || "-"}) +
+                        (entry.time > 0 ? " · " + lastJoined(translate, entry.time) : "")}
                 </div>
             </div>;
             joinArea = <JoinArea label={againLabel} reason={translate("CS2M.UI.Browser.Reason.Offline")} onJoin={null}
