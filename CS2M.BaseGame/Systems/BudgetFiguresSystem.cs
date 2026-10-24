@@ -36,7 +36,7 @@ namespace CS2M.BaseGame.Systems
 
         private CityServiceBudgetSystem _budgetSystem;
         private ServiceFeeSystem _feeSystem;
-        private EntityQuery _budgetQuery;
+        private EntityQuery _serviceQuery;
         private float _lastSend;
 
         protected override void OnCreate()
@@ -45,7 +45,8 @@ namespace CS2M.BaseGame.Systems
             _budgetSystem = World.GetOrCreateSystemManaged<CityServiceBudgetSystem>();
             _feeSystem = World.GetOrCreateSystemManaged<ServiceFeeSystem>();
             _prefabs = World.GetOrCreateSystemManaged<PrefabSystem>();
-            _budgetQuery = GetEntityQuery(ComponentType.ReadOnly<ServiceBudgetData>());
+            _serviceQuery = GetEntityQuery(ComponentType.ReadOnly<PrefabData>(), ComponentType.ReadOnly<UIObjectData>(),
+                ComponentType.ReadOnly<ServiceData>());
         }
 
         /// <summary>
@@ -119,29 +120,20 @@ namespace CS2M.BaseGame.Systems
             _lastSend = now;
             var services = new List<string>();
             var upkeep = new List<int>();
-            if (!_budgetQuery.IsEmptyIgnoreFilter)
+            // every service the budget panel lists; ServiceBudgetData only holds services whose slider was moved
+            using (NativeArray<Entity> serviceEntities = _serviceQuery.ToEntityArray(Allocator.Temp))
             {
-                using (NativeArray<Entity> entities = _budgetQuery.ToEntityArray(Allocator.Temp))
+                foreach (Entity service in serviceEntities)
                 {
-                    DynamicBuffer<ServiceBudgetData> buffer = EntityManager.GetBuffer<ServiceBudgetData>(entities[0], true);
-                    var serviceEntities = new List<Entity>();
-                    foreach (ServiceBudgetData data in buffer)
+                    string name = PrefabLookup.Name(_prefabs, service);
+                    if (name == null)
                     {
-                        serviceEntities.Add(data.m_Service);
+                        continue;
                     }
 
-                    foreach (Entity service in serviceEntities)
-                    {
-                        string name = PrefabLookup.Name(_prefabs, service);
-                        if (name == null)
-                        {
-                            continue;
-                        }
-
-                        _budgetSystem.GetEstimatedServiceBudget(service, out int value);
-                        services.Add(name);
-                        upkeep.Add(value);
-                    }
+                    _budgetSystem.GetEstimatedServiceBudget(service, out int value);
+                    services.Add(name);
+                    upkeep.Add(value);
                 }
             }
 
