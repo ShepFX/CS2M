@@ -45,7 +45,7 @@ namespace CS2M.BaseGame.Commands
     }
 
     /// <summary>
-    ///     Everything the building/prop tool placed in one click. Sent by: PlaceCaptureSystem.
+    ///     Everything the building/prop tool placed in one click. Sent by: PlaceCaptureSystem and LotBuildingCaptureSystem.
     /// </summary>
     public class PlaceCommand : CommandBase
     {

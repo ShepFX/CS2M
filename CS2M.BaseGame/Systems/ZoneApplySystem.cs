@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using CS2M.API.Commands;
 using CS2M.BaseGame.Commands;
 using Game;
 using Game.Common;
@@ -18,6 +19,8 @@ namespace CS2M.BaseGame.Systems
     {
         public static readonly InboundQueue<ZoneCellsCommand> Pending = new InboundQueue<ZoneCellsCommand>("ZoneApplySystem", 4096, 64);
 
+        private const float IndexCellSize = 1f;
+
         private EntityQuery _blocks;
 
         protected override void OnCreate()
@@ -33,7 +36,7 @@ namespace CS2M.BaseGame.Systems
         protected override void OnUpdate()
         {
             // received while joining: wait until the city has loaded
-            if (Pending.IsEmpty || CS2M.API.Commands.Command.CurrentRole == CS2M.API.Commands.MultiplayerRole.None)
+            if (Pending.IsEmpty || Command.CurrentRole == MultiplayerRole.None)
             {
                 return;
             }
@@ -102,8 +105,6 @@ namespace CS2M.BaseGame.Systems
 
             BaseGameLog.Info($"Zoning received: {count} cells on block at ({command.PosX}, {command.PosY}, {command.PosZ})");
         }
-
-        private const float IndexCellSize = 1f;
 
         private static long Key(int x, int z) => ((long)x << 32) | (uint)z;
 

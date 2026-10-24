@@ -4,7 +4,7 @@ namespace CS2M.BaseGame.Commands
 {
     /// <summary>
     ///     The host's city progression, sent every second: XP, milestone, development points, credit limit
-    ///     and loan. Joiners overwrite theirs with it.
+    ///     and loan. Joiners overwrite theirs with it. Sent by: ProgressionSyncSystem (host only).
     /// </summary>
     public class ProgressionCommand : CommandBase
     {
@@ -20,7 +20,8 @@ namespace CS2M.BaseGame.Commands
     }
 
     /// <summary>
-    ///     The development tree nodes the host has unlocked (prefab names). Sent when it changes and every few seconds.
+    ///     The development tree nodes the host has unlocked (prefab names), whenever they change and every few seconds.
+    ///     Sent by: ProgressionSyncSystem (host only).
     /// </summary>
     public class DevTreeCommand : CommandBase
     {
@@ -29,6 +30,7 @@ namespace CS2M.BaseGame.Commands
 
     /// <summary>
     ///     Joiner to host: this player set the loan to Amount. The host applies it through its LoanSystem.
+    ///     Sent by: ProgressionSyncSystem (joiners only).
     /// </summary>
     public class LoanRequestCommand : CommandBase
     {
@@ -36,7 +38,7 @@ namespace CS2M.BaseGame.Commands
     }
 
     /// <summary>
-    ///     Joiner to host: this player bought a development tree node.
+    ///     Joiner to host: this player bought a development tree node. Sent by: ProgressionSyncSystem (joiners only).
     /// </summary>
     public class DevTreeRequestCommand : CommandBase
     {
@@ -44,7 +46,8 @@ namespace CS2M.BaseGame.Commands
     }
 
     /// <summary>
-    ///     The map tiles the host owns, each as its centre (x, z pairs). Sent when it changes and every few seconds.
+    ///     The map tiles the host owns, each as its centre (x, z pairs), whenever they change and every few seconds.
+    ///     Sent by: MapTileSyncSystem (host only).
     /// </summary>
     public class MapTilesCommand : CommandBase
     {
@@ -53,6 +56,7 @@ namespace CS2M.BaseGame.Commands
 
     /// <summary>
     ///     Joiner to host: this player bought these tiles (centres as x, z pairs) for Cost.
+    ///     Sent by: MapTileSyncSystem (joiners only).
     /// </summary>
     public class TilePurchaseRequestCommand : CommandBase
     {

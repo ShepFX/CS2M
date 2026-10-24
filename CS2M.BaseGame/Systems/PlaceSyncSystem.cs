@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Reflection;
 using Colossal.Mathematics;
 using CS2M.API.Commands;
 using CS2M.BaseGame.Commands;
@@ -209,8 +209,8 @@ namespace CS2M.BaseGame.Systems
         /// <summary>Set when this frame's placement went out from definitions (read and reset by LotBuildingCaptureSystem).</summary>
         public static bool SentThisFrame;
 
-        private static readonly System.Reflection.FieldInfo LastTool =
-            typeof(ToolSystem).GetField("m_LastTool", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        private static readonly FieldInfo LastTool =
+            typeof(ToolSystem).GetField("m_LastTool", BindingFlags.Instance | BindingFlags.NonPublic);
 
         /// <summary>
         ///     The tool whose apply is running (ToolSystem.applyMode reads the same field); activeTool can already
@@ -218,7 +218,6 @@ namespace CS2M.BaseGame.Systems
         /// </summary>
         public static ToolBaseSystem ApplyingTool(ToolSystem toolSystem) =>
             LastTool?.GetValue(toolSystem) as ToolBaseSystem ?? toolSystem.activeTool;
-
 
         private EntityQuery _definitions;
         private ToolSystem _toolSystem;
@@ -260,7 +259,6 @@ namespace CS2M.BaseGame.Systems
             {
                 return;
             }
-
 
             DefinitionData main = definitions.Find(d => d.Object != null && !d.HasOwnerDefinition) ?? definitions[0];
             // every prefab and position is in the key: upgrades placed one after another share the same main (owner) definition

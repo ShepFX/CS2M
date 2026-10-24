@@ -17,7 +17,7 @@ namespace CS2M.BaseGame
     /// </summary>
     internal static class NetRefs
     {
-        // Positions are the same on both games, but allow for float noise
+        // Positions match on every client up to float noise
         private const float MatchDistanceSq = 0.25f;
 
         public static float[] F(float3 v) => new[] { v.x, v.y, v.z };

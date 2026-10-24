@@ -33,6 +33,7 @@ namespace CS2M.BaseGame.Commands
 
     /// <summary>
     ///     The host's upkeep system chose a level-up: the building starts becoming NewPrefab.
+    ///     Sent by: HostAuthoritySystem (host only).
     /// </summary>
     public class LevelUpCommand : CommandBase
     {
@@ -43,7 +44,7 @@ namespace CS2M.BaseGame.Commands
     }
 
     /// <summary>
-    ///     The host's upkeep system abandoned a building.
+    ///     The host's upkeep system abandoned a building. Sent by: HostAuthoritySystem (host only).
     /// </summary>
     public class AbandonCommand : CommandBase
     {
@@ -52,7 +53,7 @@ namespace CS2M.BaseGame.Commands
     }
 
     /// <summary>
-    ///     The host's city money; everyone shows the host's balance.
+    ///     The host's city money; everyone shows the host's balance. Sent by: HostAuthoritySystem (host only).
     /// </summary>
     public class MoneyCommand : CommandBase
     {
@@ -61,6 +62,7 @@ namespace CS2M.BaseGame.Commands
 
     /// <summary>
     ///     What a joiner's tool action cost, so the host can charge it. Not relayed to other players.
+    ///     Sent by: ChargeCaptureSystem (joiners only).
     /// </summary>
     public class ChargeCommand : CommandBase
     {

@@ -309,6 +309,9 @@ namespace CS2M.BaseGame
             }
         }
 
+        /// <summary>A reference of this kind (or none).</summary>
+        public static bool Ref(NetRef r, int kind) => r == null || r.Kind == 0 || (r.Kind == kind && Ref(r));
+
         /// <summary>
         ///     A policy adjustment within the policy's slider range (PolicySliderData), as its panel allows.
         /// </summary>
@@ -327,9 +330,6 @@ namespace CS2M.BaseGame
             Colossal.Mathematics.Bounds1 range = em.GetComponentData<Game.Prefabs.PolicySliderData>(policy).m_Range;
             return Math.Max(range.min, Math.Min(range.max, value));
         }
-
-        /// <summary>A reference of this kind (or none).</summary>
-        public static bool Ref(NetRef r, int kind) => r == null || r.Kind == 0 || (r.Kind == kind && Ref(r));
     }
 
     /// <summary>

@@ -15,11 +15,11 @@ namespace CS2M.BaseGame.Systems
     /// </summary>
     public partial class ZoneCaptureSystem : GameSystemBase
     {
-        private EntityQuery _tempBlocks;
-
         // The apply phase runs on two frames for one click; the second, identical send is dropped
-        private readonly Dictionary<string, float> _recentlySent = new Dictionary<string, float>();
         private const float RepeatWindow = 0.5f;
+
+        private readonly Dictionary<string, float> _recentlySent = new Dictionary<string, float>();
+        private EntityQuery _tempBlocks;
 
         protected override void OnCreate()
         {

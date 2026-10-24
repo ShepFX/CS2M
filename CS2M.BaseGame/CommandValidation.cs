@@ -212,11 +212,12 @@ namespace CS2M.BaseGame
             c.Upkeep = Inbound.Cap(c.Upkeep, Inbound.MaxListEntries, "Budget upkeep");
             c.FeeResources = Inbound.Cap(c.FeeResources, Inbound.MaxListEntries, "Budget fees");
             if (c.FeeResources != null && (c.FeeValues == null || c.FeeValues.Length != c.FeeResources.Length * 6 ||
-                                           !System.Array.TrueForAll(c.FeeValues, Inbound.Finite)))
+                                           !Array.TrueForAll(c.FeeValues, Inbound.Finite)))
             {
                 c.FeeResources = null;
                 c.FeeValues = null;
             }
+
             if (c.Services != null)
             {
                 for (int i = 0; i < c.Services.Length; i++)

@@ -3,7 +3,7 @@ using CS2M.API.Commands;
 namespace CS2M.BaseGame.Commands
 {
     /// <summary>
-    ///     The full tax rate table (TaxSystem.m_TaxRates). Sent by whoever changed a tax slider.
+    ///     The full tax rate table (TaxSystem.m_TaxRates). Sent by: EconomySyncSystem, on the game that changed a tax slider.
     /// </summary>
     public class TaxCommand : CommandBase
     {
@@ -11,7 +11,8 @@ namespace CS2M.BaseGame.Commands
     }
 
     /// <summary>
-    ///     Service budgets: Services[i] (prefab name) is at Budgets[i] percent. Sent by whoever changed one.
+    ///     Service budgets: Services[i] (prefab name) is at Budgets[i] percent.
+    ///     Sent by: EconomySyncSystem, on the game that changed a budget.
     /// </summary>
     public class BudgetCommand : CommandBase
     {
@@ -20,7 +21,7 @@ namespace CS2M.BaseGame.Commands
     }
 
     /// <summary>
-    ///     The host's population figures, shown on joiners' top bar.
+    ///     The host's population figures, shown on the joiners' top bar. Sent by: HostAuthoritySystem (host only).
     /// </summary>
     public class PopulationCommand : CommandBase
     {
@@ -29,15 +30,13 @@ namespace CS2M.BaseGame.Commands
         public int AverageHappiness { get; set; }
         public int AverageHealth { get; set; }
     }
-}
 
-namespace CS2M.BaseGame.Commands
-{
     /// <summary>
-    ///     The host's budget figures, shown on joiners' budget panels: income and expense per category
+    ///     The host's budget figures, shown on the joiners' budget panels: income and expense per category
     ///     (CityServiceBudgetSystem.m_Income / m_Expenses) and estimated monthly upkeep per service.
+    ///     Sent by: BudgetFiguresSystem (host only).
     /// </summary>
-    public class BudgetFiguresCommand : CS2M.API.Commands.CommandBase
+    public class BudgetFiguresCommand : CommandBase
     {
         public int[] Income { get; set; }
         public int[] Expenses { get; set; }

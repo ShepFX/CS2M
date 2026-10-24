@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
 using Colossal.Mathematics;
+using CS2M.API.Commands;
 using CS2M.BaseGame.Commands;
 using Game;
 using Game.Common;
@@ -37,7 +37,7 @@ namespace CS2M.BaseGame.Systems
         protected override void OnUpdate()
         {
             // received while joining: wait until the city has loaded
-            if (CS2M.API.Commands.Command.CurrentRole == CS2M.API.Commands.MultiplayerRole.None)
+            if (Command.CurrentRole == MultiplayerRole.None)
             {
                 return;
             }

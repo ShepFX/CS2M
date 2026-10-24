@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using CS2M.API.Commands;
 using CS2M.BaseGame.Commands;
@@ -187,7 +186,7 @@ namespace CS2M.BaseGame.Systems
                     }
                     else
                     {
-                        // keep waiting for our own copy of the received value
+                        // keep waiting for the received value to reach the local buffer
                         current[name] = b;
                     }
 

@@ -4,10 +4,8 @@ namespace CS2M.BaseGame.Commands
 {
     /// <summary>
     ///     Where a player's mouse points on the map, so other players can see their cursor.
-    /// </summary>
-    /// <remarks>
     ///     Sent by: CursorSystem, about 10 times a second while the cursor moves.
-    /// </remarks>
+    /// </summary>
     public class CursorCommand : CommandBase
     {
         public string Username { get; set; }

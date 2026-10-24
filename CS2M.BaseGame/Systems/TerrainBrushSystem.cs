@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Colossal.Mathematics;
 using CS2M.API.Commands;
@@ -12,7 +11,6 @@ using Game.Tools;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
-using UnityEngine;
 
 namespace CS2M.BaseGame.Systems
 {
@@ -157,6 +155,9 @@ namespace CS2M.BaseGame.Systems
         private const float SmallStrength = 0.002f;
         private const float SmallStrengthPower = 0.055f;
 
+        // every stamp is a GPU dispatch
+        private const int MaxStampsPerFrame = 256;
+
         private PrefabSystem _prefabSystem;
         private TerrainSystem _terrainSystem;
         private TerrainMaterialSystem _terrainMaterialSystem;
@@ -177,7 +178,7 @@ namespace CS2M.BaseGame.Systems
                 return;
             }
 
-            // every stamp is a GPU dispatch: at most this many per frame, the rest waits for the next frame
+            // at most MaxStampsPerFrame stamps per frame; the rest waits for the next frame
             int stamps = 0;
             while (stamps < MaxStampsPerFrame && Pending.TryDequeue(out TerrainBrushCommand command))
             {
@@ -191,8 +192,6 @@ namespace CS2M.BaseGame.Systems
                 }
             }
         }
-
-        private const int MaxStampsPerFrame = 256;
 
         // the handler checked the stamps: whole, finite, on the map, size and strength within the tool's range
         private int Apply(TerrainBrushCommand command)
