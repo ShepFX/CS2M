@@ -45,7 +45,14 @@ namespace CS2M.BaseGame.Systems
 
             while (Pending.TryDequeue(out ColorCommand command))
             {
-                Apply(command);
+                try
+                {
+                    Apply(command);
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(ColorSyncSystem), e);
+                }
             }
 
             float now = UnityEngine.Time.realtimeSinceStartup;

@@ -59,7 +59,14 @@ namespace CS2M.BaseGame.Systems
 
             while (Pending.TryDequeue(out RenameCommand command))
             {
-                Apply(command);
+                try
+                {
+                    Apply(command);
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(NameSyncSystem), e);
+                }
             }
 
             float now = UnityEngine.Time.realtimeSinceStartup;

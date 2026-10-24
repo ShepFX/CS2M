@@ -164,15 +164,22 @@ namespace CS2M.BaseGame.Systems
 
             while (Pending.TryDequeue(out WaterSourceCommand command))
             {
-                var buffer = new EntityCommandBuffer(Allocator.Temp);
-                var claimed = new HashSet<Entity>();
-                foreach (WaterSourceChange change in command.Changes ?? new WaterSourceChange[0])
+                try
                 {
-                    Apply(buffer, change, claimed);
-                }
+                    var buffer = new EntityCommandBuffer(Allocator.Temp);
+                    var claimed = new HashSet<Entity>();
+                    foreach (WaterSourceChange change in command.Changes ?? new WaterSourceChange[0])
+                    {
+                        Apply(buffer, change, claimed);
+                    }
 
-                buffer.Playback(EntityManager);
-                buffer.Dispose();
+                    buffer.Playback(EntityManager);
+                    buffer.Dispose();
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(WaterSourceApplySystem), e);
+                }
             }
         }
 

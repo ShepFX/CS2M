@@ -294,144 +294,151 @@ namespace CS2M.BaseGame.Systems
 
             while (Pending.TryDequeue(out AreaChangeCommand command))
             {
-                int removed = 0, reshaped = 0, built = 0, missing = 0;
-                var owners = new HashSet<Entity>();
-
-                foreach (AreaKey key in command.Deleted ?? new AreaKey[0])
+                try
                 {
-                    Entity area = AreaRefs.Resolve(EntityManager, _prefabSystem, key);
-                    if (area == Entity.Null)
+                    int removed = 0, reshaped = 0, built = 0, missing = 0;
+                    var owners = new HashSet<Entity>();
+
+                    foreach (AreaKey key in command.Deleted ?? new AreaKey[0])
                     {
-                        missing++;
-                        continue;
-                    }
-
-                    AddOwner(area, owners);
-                    Delete(area);
-                    removed++;
-                }
-
-                foreach (AreaUpdate update in command.Updated ?? new AreaUpdate[0])
-                {
-                    Entity area = AreaRefs.Resolve(EntityManager, _prefabSystem, update.Old);
-                    if (area == Entity.Null || update.New?.Nodes == null)
-                    {
-                        missing++;
-                        continue;
-                    }
-
-                    DynamicBuffer<AreaNode> nodes = EntityManager.GetBuffer<AreaNode>(area);
-                    nodes.Clear();
-                    foreach (AreaNode node in Nodes(update.New))
-                    {
-                        nodes.Add(node);
-                    }
-
-                    SetCache(area, update.New);
-                    MarkUpdated(area);
-
-                    // generated sub-areas (Slave) copy their owner's outline only when they are Updated
-                    // themselves (GeometrySystem); on the sender ApplyAreasSystem updates them via their Temps
-                    if (EntityManager.HasBuffer<SubArea>(area))
-                    {
-                        var children = new List<Entity>();
-                        foreach (SubArea subArea in EntityManager.GetBuffer<SubArea>(area, true))
+                        Entity area = AreaRefs.Resolve(EntityManager, _prefabSystem, key);
+                        if (area == Entity.Null)
                         {
-                            children.Add(subArea.m_Area);
+                            missing++;
+                            continue;
                         }
 
-                        foreach (Entity child in children)
+                        AddOwner(area, owners);
+                        Delete(area);
+                        removed++;
+                    }
+
+                    foreach (AreaUpdate update in command.Updated ?? new AreaUpdate[0])
+                    {
+                        Entity area = AreaRefs.Resolve(EntityManager, _prefabSystem, update.Old);
+                        if (area == Entity.Null || update.New?.Nodes == null)
                         {
-                            if (EntityManager.Exists(child) && EntityManager.HasComponent<Area>(child) &&
-                                (EntityManager.GetComponentData<Area>(child).m_Flags & AreaFlags.Slave) != 0)
+                            missing++;
+                            continue;
+                        }
+
+                        DynamicBuffer<AreaNode> nodes = EntityManager.GetBuffer<AreaNode>(area);
+                        nodes.Clear();
+                        foreach (AreaNode node in Nodes(update.New))
+                        {
+                            nodes.Add(node);
+                        }
+
+                        SetCache(area, update.New);
+                        MarkUpdated(area);
+
+                        // generated sub-areas (Slave) copy their owner's outline only when they are Updated
+                        // themselves (GeometrySystem); on the sender ApplyAreasSystem updates them via their Temps
+                        if (EntityManager.HasBuffer<SubArea>(area))
+                        {
+                            var children = new List<Entity>();
+                            foreach (SubArea subArea in EntityManager.GetBuffer<SubArea>(area, true))
                             {
-                                MarkUpdated(child);
+                                children.Add(subArea.m_Area);
+                            }
+
+                            foreach (Entity child in children)
+                            {
+                                if (EntityManager.Exists(child) && EntityManager.HasComponent<Area>(child) &&
+                                    (EntityManager.GetComponentData<Area>(child).m_Flags & AreaFlags.Slave) != 0)
+                                {
+                                    MarkUpdated(child);
+                                }
                             }
                         }
+
+                        AddOwner(area, owners);
+                        reshaped++;
                     }
 
-                    AddOwner(area, owners);
-                    reshaped++;
-                }
-
-                var buffer = new EntityCommandBuffer(Allocator.Temp);
-                foreach (AreaDataCmd data in command.Created ?? new AreaDataCmd[0])
-                {
-                    Entity prefab = PrefabLookup.Find(EntityManager, _prefabSystem, data.Prefab);
-                    if (prefab == Entity.Null || data.Nodes == null)
+                    var buffer = new EntityCommandBuffer(Allocator.Temp);
+                    foreach (AreaDataCmd data in command.Created ?? new AreaDataCmd[0])
                     {
-                        BaseGameLog.Warn($"Area received with an unknown prefab {data.Prefab}");
-                        continue;
-                    }
-
-                    Entity owner = Entity.Null;
-                    if (data.Owner != null && data.Owner.Kind != 0 &&
-                        (!NetRefs.Resolve(EntityManager, data.Owner, out owner, _prefabSystem) || owner == Entity.Null))
-                    {
-                        BaseGameLog.Warn($"Area {data.Prefab} received, but its building was not found here");
-                        missing++;
-                        continue;
-                    }
-
-                    Entity entity = buffer.CreateEntity(_archetype);
-                    buffer.SetComponent(entity, new CreationDefinition
-                    {
-                        m_Prefab = prefab,
-                        m_Owner = owner,
-                        m_Flags = CreationFlags.Permanent,
-                        m_RandomSeed = data.Seed
-                    });
-
-                    // GenerateAreasSystem only marks a new area Complete (a closed shape) when its first node
-                    // is repeated at the end, which is how the area tool hands over a finished outline
-                    List<AreaNode> list = Nodes(data);
-                    if (data.Complete && list.Count >= 3)
-                    {
-                        list.Add(list[0]);
-                    }
-
-                    DynamicBuffer<AreaNode> nodes = buffer.AddBuffer<AreaNode>(entity);
-                    foreach (AreaNode node in list)
-                    {
-                        nodes.Add(node);
-                    }
-
-                    if (data.Cache != null && data.CacheMesh != null)
-                    {
-                        DynamicBuffer<LocalNodeCache> cache = buffer.AddBuffer<LocalNodeCache>(entity);
-                        foreach (LocalNodeCache item in Cache(data))
+                        Entity prefab = PrefabLookup.Find(EntityManager, _prefabSystem, data.Prefab);
+                        if (prefab == Entity.Null || data.Nodes == null)
                         {
-                            cache.Add(item);
+                            BaseGameLog.Warn($"Area received with an unknown prefab {data.Prefab}");
+                            continue;
                         }
 
-                        if (data.Complete && data.CacheMesh.Length >= 3)
+                        Entity owner = Entity.Null;
+                        if (data.Owner != null && data.Owner.Kind != 0 &&
+                            (!NetRefs.Resolve(EntityManager, data.Owner, out owner, _prefabSystem) || owner == Entity.Null))
                         {
-                            cache.Add(cache[0]);
+                            BaseGameLog.Warn($"Area {data.Prefab} received, but its building was not found here");
+                            missing++;
+                            continue;
+                        }
+
+                        Entity entity = buffer.CreateEntity(_archetype);
+                        buffer.SetComponent(entity, new CreationDefinition
+                        {
+                            m_Prefab = prefab,
+                            m_Owner = owner,
+                            m_Flags = CreationFlags.Permanent,
+                            m_RandomSeed = data.Seed
+                        });
+
+                        // GenerateAreasSystem only marks a new area Complete (a closed shape) when its first node
+                        // is repeated at the end, which is how the area tool hands over a finished outline
+                        List<AreaNode> list = Nodes(data);
+                        if (data.Complete && list.Count >= 3)
+                        {
+                            list.Add(list[0]);
+                        }
+
+                        DynamicBuffer<AreaNode> nodes = buffer.AddBuffer<AreaNode>(entity);
+                        foreach (AreaNode node in list)
+                        {
+                            nodes.Add(node);
+                        }
+
+                        if (data.Cache != null && data.CacheMesh != null)
+                        {
+                            DynamicBuffer<LocalNodeCache> cache = buffer.AddBuffer<LocalNodeCache>(entity);
+                            foreach (LocalNodeCache item in Cache(data))
+                            {
+                                cache.Add(item);
+                            }
+
+                            if (data.Complete && data.CacheMesh.Length >= 3 && cache.Length > 0)
+                            {
+                                cache.Add(cache[0]);
+                            }
+                        }
+
+                        if (owner != Entity.Null)
+                        {
+                            owners.Add(owner);
+                        }
+
+                        built++;
+                    }
+
+                    buffer.Playback(EntityManager);
+                    buffer.Dispose();
+
+                    // the area tool upgrades the building that owns an extractor/lot area, so its stats refresh
+                    foreach (Entity owner in owners)
+                    {
+                        if (EntityManager.Exists(owner) && !EntityManager.HasComponent<Deleted>(owner) &&
+                            !EntityManager.HasComponent<Updated>(owner))
+                        {
+                            EntityManager.AddComponent<Updated>(owner);
                         }
                     }
 
-                    if (owner != Entity.Null)
-                    {
-                        owners.Add(owner);
-                    }
-
-                    built++;
+                    BaseGameLog.Info($"Areas received: {built} created, {reshaped} reshaped, {removed} removed, {missing} not found here");
                 }
-
-                buffer.Playback(EntityManager);
-                buffer.Dispose();
-
-                // the area tool upgrades the building that owns an extractor/lot area, so its stats refresh
-                foreach (Entity owner in owners)
+                catch (System.Exception e)
                 {
-                    if (EntityManager.Exists(owner) && !EntityManager.HasComponent<Deleted>(owner) &&
-                        !EntityManager.HasComponent<Updated>(owner))
-                    {
-                        EntityManager.AddComponent<Updated>(owner);
-                    }
+                    Inbound.Failed(nameof(AreaApplySystem), e);
                 }
-
-                BaseGameLog.Info($"Areas received: {built} created, {reshaped} reshaped, {removed} removed, {missing} not found here");
             }
         }
 

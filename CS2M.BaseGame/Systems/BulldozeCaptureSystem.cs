@@ -105,44 +105,51 @@ namespace CS2M.BaseGame.Systems
 
             while (Pending.TryDequeue(out BulldozeCommand command))
             {
-                int removed = 0, missing = 0;
-                var deleted = new HashSet<Entity>();
-                foreach (NetRef target in command.Targets ?? new NetRef[0])
+                try
                 {
-                    if (!NetRefs.Resolve(EntityManager, target, out Entity entity, _prefabSystem) || entity == Entity.Null)
+                    int removed = 0, missing = 0;
+                    var deleted = new HashSet<Entity>();
+                    foreach (NetRef target in command.Targets ?? new NetRef[0])
                     {
-                        // e.g. a growable that only spawned in the other game
-                        missing++;
-                        continue;
-                    }
-
-                    if (deleted.Add(entity))
-                    {
-                        EntityManager.AddComponent<Game.Common.Deleted>(entity);
-                        removed++;
-                    }
-                }
-
-                // junctions left behind by a removed road need their geometry rebuilt
-                foreach (Entity entity in deleted)
-                {
-                    if (!EntityManager.HasComponent<Edge>(entity))
-                    {
-                        continue;
-                    }
-
-                    Edge edge = EntityManager.GetComponentData<Edge>(entity);
-                    foreach (Entity node in new[] { edge.m_Start, edge.m_End })
-                    {
-                        if (node != Entity.Null && EntityManager.Exists(node) && !deleted.Contains(node) &&
-                            !EntityManager.HasComponent<Game.Common.Updated>(node))
+                        if (!NetRefs.Resolve(EntityManager, target, out Entity entity, _prefabSystem) || entity == Entity.Null)
                         {
-                            EntityManager.AddComponent<Game.Common.Updated>(node);
+                            // e.g. a growable that only spawned in the other game
+                            missing++;
+                            continue;
+                        }
+
+                        if (deleted.Add(entity))
+                        {
+                            EntityManager.AddComponent<Game.Common.Deleted>(entity);
+                            removed++;
                         }
                     }
-                }
 
-                BaseGameLog.Info($"Bulldoze received: {removed} removed, {missing} not found here");
+                    // junctions left behind by a removed road need their geometry rebuilt
+                    foreach (Entity entity in deleted)
+                    {
+                        if (!EntityManager.HasComponent<Edge>(entity))
+                        {
+                            continue;
+                        }
+
+                        Edge edge = EntityManager.GetComponentData<Edge>(entity);
+                        foreach (Entity node in new[] { edge.m_Start, edge.m_End })
+                        {
+                            if (node != Entity.Null && EntityManager.Exists(node) && !deleted.Contains(node) &&
+                                !EntityManager.HasComponent<Game.Common.Updated>(node))
+                            {
+                                EntityManager.AddComponent<Game.Common.Updated>(node);
+                            }
+                        }
+                    }
+
+                    BaseGameLog.Info($"Bulldoze received: {removed} removed, {missing} not found here");
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(BulldozeApplySystem), e);
+                }
             }
         }
     }

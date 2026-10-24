@@ -35,13 +35,20 @@ namespace CS2M.BaseGame.Systems
 
             while (Pending.TryDequeue(out SpeedCommand command))
             {
-                if (command.Speed != _simulationSystem.selectedSpeed)
+                try
                 {
-                    _simulationSystem.selectedSpeed = command.Speed;
-                    BaseGameLog.Info($"Game speed set to {command.Speed} by another player");
-                }
+                    if (command.Speed != _simulationSystem.selectedSpeed)
+                    {
+                        _simulationSystem.selectedSpeed = command.Speed;
+                        BaseGameLog.Info($"Game speed set to {command.Speed} by another player");
+                    }
 
-                _known = command.Speed;
+                    _known = command.Speed;
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(SpeedSyncSystem), e);
+                }
             }
 
             float speed = _simulationSystem.selectedSpeed;

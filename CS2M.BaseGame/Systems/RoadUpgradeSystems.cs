@@ -278,7 +278,7 @@ namespace CS2M.BaseGame.Systems
 
         private const float RetrySeconds = 5f;
 
-        // each lookup scans every road, so segments still missing are retried a few times a second, not every frame
+        // segments still missing are retried a few times a second, not every frame
         private const float RetryInterval = 0.25f;
         private const RoadFlags AlignmentFlags = RoadFlags.StartHalfAligned | RoadFlags.EndHalfAligned;
 
@@ -301,66 +301,37 @@ namespace CS2M.BaseGame.Systems
             }
 
             float now = UnityEngine.Time.realtimeSinceStartup;
-            bool received = false;
+            int edges = 0, nodes = 0;
+
+            // new upgrades are tried once straight away; only the ones still missing wait for the retry timer
+            var freshEdges = new List<KeyValuePair<float, EdgeUpgradeData>>();
+            var freshNodes = new List<KeyValuePair<float, NodeUpgradeData>>();
             while (Pending.TryDequeue(out RoadUpgradeCommand command))
             {
-                received = true;
                 foreach (EdgeUpgradeData data in command.Edges ?? new EdgeUpgradeData[0])
                 {
-                    _waitingEdges.Add(new KeyValuePair<float, EdgeUpgradeData>(now, data));
+                    freshEdges.Add(new KeyValuePair<float, EdgeUpgradeData>(now, data));
                 }
 
                 foreach (NodeUpgradeData data in command.Nodes ?? new NodeUpgradeData[0])
                 {
-                    _waitingNodes.Add(new KeyValuePair<float, NodeUpgradeData>(now, data));
+                    freshNodes.Add(new KeyValuePair<float, NodeUpgradeData>(now, data));
                 }
             }
 
-            if ((_waitingEdges.Count == 0 && _waitingNodes.Count == 0) || (!received && now < _nextRetry))
+            // oldest first, so two quick changes to one segment end in the latest state: waiting entries are
+            // retried (on the timer) before the new ones are tried
+            if ((_waitingEdges.Count > 0 || _waitingNodes.Count > 0) && now >= _nextRetry)
             {
-                return;
+                _nextRetry = now + RetryInterval;
+                edges += TryEdges(_waitingEdges, now, null);
+                nodes += TryNodes(_waitingNodes, now, null);
             }
 
-            _nextRetry = now + RetryInterval;
-            // oldest first, so two quick changes to one segment end in the latest state
-            int edges = 0, nodes = 0;
-            for (int i = 0; i < _waitingEdges.Count; i++)
-            {
-                EdgeUpgradeData data = _waitingEdges[i].Value;
-                if (NetRefs.Resolve(EntityManager, data.Edge, out Entity edge) && edge != Entity.Null)
-                {
-                    if (ApplyEdge(edge, data))
-                    {
-                        edges++;
-                    }
-
-                    _waitingEdges.RemoveAt(i--);
-                }
-                else if (now - _waitingEdges[i].Key > RetrySeconds)
-                {
-                    BaseGameLog.Warn($"Road upgrade received for a segment missing here at {NetRefs.V3(data.Edge?.A)}");
-                    _waitingEdges.RemoveAt(i--);
-                }
-            }
-
-            for (int i = 0; i < _waitingNodes.Count; i++)
-            {
-                NodeUpgradeData data = _waitingNodes[i].Value;
-                if (NetRefs.Resolve(EntityManager, data.Node, out Entity node) && node != Entity.Null)
-                {
-                    if (ApplyNode(node, data))
-                    {
-                        nodes++;
-                    }
-
-                    _waitingNodes.RemoveAt(i--);
-                }
-                else if (now - _waitingNodes[i].Key > RetrySeconds)
-                {
-                    BaseGameLog.Warn($"Road upgrade received for a junction missing here at {NetRefs.V3(data.Node?.A)}");
-                    _waitingNodes.RemoveAt(i--);
-                }
-            }
+            edges += TryEdges(freshEdges, now, _waitingEdges);
+            nodes += TryNodes(freshNodes, now, _waitingNodes);
+            Trim(_waitingEdges, "segment");
+            Trim(_waitingNodes, "junction");
 
             if (edges > 0 || nodes > 0)
             {
@@ -368,12 +339,115 @@ namespace CS2M.BaseGame.Systems
             }
         }
 
+        private const int MaxWaiting = 4096;
+
+        private static void Trim<T>(List<KeyValuePair<float, T>> waiting, string what)
+        {
+            if (waiting.Count <= MaxWaiting)
+            {
+                return;
+            }
+
+            Inbound.Warn("upgrade-waiting", $"Over {MaxWaiting} road upgrades waiting for their {what}; oldest dropped");
+            waiting.RemoveRange(0, waiting.Count - MaxWaiting);
+        }
+
+        /// <summary>
+        ///     Applies the entries whose segment is here. The rest stay in <paramref name="entries" /> (or move to
+        ///     <paramref name="waitInto" />) until they are RetrySeconds old.
+        /// </summary>
+        private int TryEdges(List<KeyValuePair<float, EdgeUpgradeData>> entries, float now, List<KeyValuePair<float, EdgeUpgradeData>> waitInto)
+        {
+            int applied = 0;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                EdgeUpgradeData data = entries[i].Value;
+                bool done = true;
+                try
+                {
+                    if (NetRefs.Resolve(EntityManager, data.Edge, out Entity edge) && edge != Entity.Null)
+                    {
+                        if (ApplyEdge(edge, data))
+                        {
+                            applied++;
+                        }
+                    }
+                    else if (now - entries[i].Key > RetrySeconds)
+                    {
+                        Inbound.Warn("upgrade-edge-missing", $"Road upgrade received for a segment missing here at {NetRefs.V3(data.Edge?.A)}");
+                    }
+                    else
+                    {
+                        done = false;
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(RoadUpgradeApplySystem), e);
+                }
+
+                if (!done && waitInto != null)
+                {
+                    waitInto.Add(entries[i]);
+                }
+                else if (done && waitInto == null)
+                {
+                    entries.RemoveAt(i--);
+                }
+            }
+
+            return applied;
+        }
+
+        private int TryNodes(List<KeyValuePair<float, NodeUpgradeData>> entries, float now, List<KeyValuePair<float, NodeUpgradeData>> waitInto)
+        {
+            int applied = 0;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                NodeUpgradeData data = entries[i].Value;
+                bool done = true;
+                try
+                {
+                    if (NetRefs.Resolve(EntityManager, data.Node, out Entity node) && node != Entity.Null)
+                    {
+                        if (ApplyNode(node, data))
+                        {
+                            applied++;
+                        }
+                    }
+                    else if (now - entries[i].Key > RetrySeconds)
+                    {
+                        Inbound.Warn("upgrade-node-missing", $"Road upgrade received for a junction missing here at {NetRefs.V3(data.Node?.A)}");
+                    }
+                    else
+                    {
+                        done = false;
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(RoadUpgradeApplySystem), e);
+                }
+
+                if (!done && waitInto != null)
+                {
+                    waitInto.Add(entries[i]);
+                }
+                else if (done && waitInto == null)
+                {
+                    entries.RemoveAt(i--);
+                }
+            }
+
+            return applied;
+        }
+
         private bool ApplyEdge(Entity entity, EdgeUpgradeData data)
         {
             Entity prefab = PrefabLookup.Find(EntityManager, _prefabSystem, data.Prefab);
-            if (prefab == Entity.Null)
+            if (prefab == Entity.Null || !EntityManager.HasComponent<NetData>(prefab))
             {
-                BaseGameLog.Warn($"Road upgrade received with an unknown prefab {data.Prefab}");
+                Inbound.Warn("upgrade-prefab", $"Road upgrade received with an unknown prefab {data.Prefab}");
                 return false;
             }
 
@@ -458,9 +532,9 @@ namespace CS2M.BaseGame.Systems
         private bool ApplyNode(Entity entity, NodeUpgradeData data)
         {
             Entity prefab = PrefabLookup.Find(EntityManager, _prefabSystem, data.Prefab);
-            if (prefab == Entity.Null)
+            if (prefab == Entity.Null || !EntityManager.HasComponent<NetData>(prefab))
             {
-                BaseGameLog.Warn($"Junction upgrade received with an unknown prefab {data.Prefab}");
+                Inbound.Warn("upgrade-prefab", $"Junction upgrade received with an unknown prefab {data.Prefab}");
                 return false;
             }
 

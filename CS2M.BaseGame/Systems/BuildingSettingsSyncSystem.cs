@@ -159,18 +159,25 @@ namespace CS2M.BaseGame.Systems
             var buffer = new EntityCommandBuffer(Allocator.Temp);
             while (Pending.TryDequeue(out BuildingPolicyCommand command))
             {
-                Entity policy = PrefabLookup.Find(EntityManager, _prefabSystem, command.Policy);
-                if (policy == Entity.Null ||
-                    !NetRefs.Resolve(EntityManager, command.Target, out Entity target, _prefabSystem) || target == Entity.Null)
+                try
                 {
-                    BaseGameLog.Warn($"Building policy received for something missing here ({command.Policy} on {command.Target?.Prefab})");
-                    continue;
-                }
+                    Entity policy = PrefabLookup.Find(EntityManager, _prefabSystem, command.Policy);
+                    if (policy == Entity.Null ||
+                        !NetRefs.Resolve(EntityManager, command.Target, out Entity target, _prefabSystem) || target == Entity.Null)
+                    {
+                        BaseGameLog.Warn($"Building policy received for something missing here ({command.Policy} on {command.Target?.Prefab})");
+                        continue;
+                    }
 
-                Entity modify = buffer.CreateEntity();
-                buffer.AddComponent<Event>(modify);
-                buffer.AddComponent(modify, new Modify(target, policy, command.Active, command.Adjustment));
-                BaseGameLog.Info($"Building policy received: {command.Policy} {(command.Active ? "on" : "off")} on {command.Target.Prefab}");
+                    Entity modify = buffer.CreateEntity();
+                    buffer.AddComponent<Event>(modify);
+                    buffer.AddComponent(modify, new Modify(target, policy, command.Active, Inbound.PolicyAdjustment(EntityManager, policy, command.Adjustment)));
+                    BaseGameLog.Info($"Building policy received: {command.Policy} {(command.Active ? "on" : "off")} on {command.Target.Prefab}");
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(BuildingSettingsSyncSystem), e);
+                }
             }
 
             buffer.Playback(EntityManager);

@@ -74,7 +74,14 @@ namespace CS2M.BaseGame.Systems
             float now = UnityEngine.Time.realtimeSinceStartup;
             while (Pending.TryDequeue(out PolicyCommand command))
             {
-                Apply(command, now);
+                try
+                {
+                    Apply(command, now);
+                }
+                catch (System.Exception e)
+                {
+                    Inbound.Failed(nameof(PolicySyncSystem), e);
+                }
             }
 
             if (now - _lastCheck < CheckInterval || Command.SendToAll == null)
@@ -137,7 +144,7 @@ namespace CS2M.BaseGame.Systems
 
             var buffer = new EntityCommandBuffer(Allocator.Temp);
             Entity entity = buffer.CreateEntity(_modifyArchetype);
-            buffer.SetComponent(entity, new Modify(target, policy, command.Active, command.Adjustment));
+            buffer.SetComponent(entity, new Modify(target, policy, command.Active, Inbound.PolicyAdjustment(EntityManager, policy, command.Adjustment)));
             buffer.Playback(EntityManager);
             buffer.Dispose();
 
