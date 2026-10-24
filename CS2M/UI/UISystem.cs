@@ -49,6 +49,8 @@ namespace CS2M.UI
         private const int MaxLobbyResponse = 512 * 1024;
         private static readonly Regex SessionToken = new Regex("^[A-Za-z0-9_-]{4,64}$");
         private ValueBinding<bool> _hudCollapsed;
+        private ValueBinding<string> _disconnectNotice;
+        private ValueBinding<bool> _isHost;
 
         private readonly Stopwatch _downloadTimer = new();
         private int _lastDownloadDone = 0;
@@ -69,6 +71,18 @@ namespace CS2M.UI
 
         protected override void OnUpdate()
         {
+            string notice = NetworkInterface.DisconnectNotice ?? "";
+            if (notice != _disconnectNotice.value)
+            {
+                _disconnectNotice.Update(notice);
+            }
+
+            bool isHost = NetworkInterface.Instance.LocalPlayer.PlayerType == PlayerType.SERVER;
+            if (isHost != _isHost.value)
+            {
+                _isHost.Update(isHost);
+            }
+
             base.OnUpdate();
 
             // Hand the server browser list over from the download thread
@@ -123,6 +137,23 @@ namespace CS2M.UI
             AddBinding(_joinPort = new ValueBinding<int>(Mod.Name, "JoinPort", settings?.LastJoinPort ?? 0));
             AddBinding(_hostPort = new ValueBinding<int>(Mod.Name, "HostPort", settings?.LastHostPort ?? 0));
             AddBinding(_username = new ValueBinding<string>(Mod.Name, "Username", settings?.LastUsername ?? ""));
+            // kick/ban from the HUD (host only); the kicked player sees the reason once
+            AddBinding(new TriggerBinding<int, bool>(Mod.Name, "KickPlayer", (id, ban) =>
+            {
+                string name = NetworkInterface.Instance.Kick(id, ban);
+                if (name != null)
+                {
+                    CS2M.API.Chat.Instance?.PrintGameMessage($"{name} was {(ban ? "banned" : "kicked")}");
+                }
+            }));
+            AddBinding(new TriggerBinding(Mod.Name, "ClearBans", () => NetworkInterface.Instance.ClearBans()));
+            AddBinding(new TriggerBinding(Mod.Name, "DismissDisconnectNotice", () =>
+            {
+                NetworkInterface.DisconnectNotice = null;
+                _disconnectNotice.Update("");
+            }));
+            AddBinding(_disconnectNotice = new ValueBinding<string>(Mod.Name, "DisconnectNotice", ""));
+            AddBinding(_isHost = new ValueBinding<bool>(Mod.Name, "IsHost", false));
             // multiplayer HUD hidden/shown, remembered between games
             AddBinding(_hudCollapsed = new ValueBinding<bool>(Mod.Name, "HudCollapsed", settings?.HudCollapsed ?? false));
             AddBinding(new TriggerBinding<bool>(Mod.Name, "SetHudCollapsed", collapsed =>

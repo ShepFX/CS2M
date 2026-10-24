@@ -6,12 +6,14 @@ import {setVal} from "api";
 import mod from "../../mod.json";
 import styles from "./hud.module.scss";
 import {ResyncButton, ResyncStatus} from "./resync";
+import {DisconnectNotice, PlayerActions} from "./moderation";
 
 interface Player {
     n: string;   // name
     c: string;   // cursor colour
     a: string;   // activity
     me: boolean; // this game's player
+    id?: number; // the id the host stamps on this player's messages (not set for yourself)
 }
 
 interface Message {
@@ -50,7 +52,7 @@ export const MultiplayerHud = () => {
     const unread = Math.max(0, messages.length - seen);
 
     if (players.length === 0) {
-        return <ResyncStatus/>;
+        return <><ResyncStatus/><DisconnectNotice/></>;
     }
 
     const colourOf = (user: string) => players.find(p => p.n.replace(" (host)", "") === user)?.c;
@@ -79,6 +81,7 @@ export const MultiplayerHud = () => {
                         <span className={styles.swatch} style={{backgroundColor: player.c}}/>
                         <span className={styles.name}>{player.n}{player.me ? " (you)" : ""}</span>
                         {player.a && <span className={styles.activity}>{player.a}</span>}
+                        {!player.me && player.id !== undefined && <PlayerActions id={player.id} name={player.n}/>}
                     </div>
                 ))}
             </div>

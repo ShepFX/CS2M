@@ -149,3 +149,54 @@ $muted: rgba(255, 255, 255, 0.6);
     font-size: 11rem;
     font-weight: bold;
 }
+
+// moderation (host): the ⋯ button on a player row and its kick/ban actions
+.more {
+    margin-left: 6rem;
+    padding: 0 6rem;
+    border-radius: 4rem;
+    background-color: rgba(255, 255, 255, 0.06);
+    color: white;
+    font-size: 13rem;
+}
+
+.actions {
+    display: flex;
+    align-items: center;
+    margin-left: 6rem;
+}
+
+.action, .danger {
+    margin-left: 4rem;
+    padding: 2rem 8rem;
+    border-radius: 4rem;
+    font-size: 11rem;
+    font-weight: bold;
+    color: white;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.danger {
+    background-color: rgba(226, 49, 42, 0.85);
+}
+
+.confirm {
+    font-size: 11rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+// shown to a kicked/banned player
+.notice_box {
+    position: absolute;
+    right: 12rem;
+    top: 70rem;
+    display: flex;
+    align-items: center;
+    padding: 8rem 12rem;
+    border-radius: 8rem;
+    background-color: rgba(16, 19, 24, 0.9);
+    border: 1rem solid rgba(226, 49, 42, 0.6);
+    color: white;
+    font-size: 13rem;
+    pointer-events: auto;
+}

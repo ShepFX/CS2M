@@ -217,7 +217,29 @@ namespace CS2M.Networking
 
             //TODO: Check that only the relevant command could be sent in connected, not joined state
 
+            if (NetworkInterface.Instance.LocalPlayer.PlayerType == PlayerType.SERVER)
+            {
+                // Players never got ids, so every message said 0: stamp the sender from its connection
+                // (the host is 0), which also stops a client claiming to be someone else
+                command.SenderId = PlayerIdOf(peer);
+                handler.Parse(command);
+                // the host is the hub: pass player actions on to the other joiners
+                if (handler.RelayOnServer)
+                {
+                    SendToAllClientsExcept(peer, command);
+                }
+
+                return;
+            }
+
             handler.Parse(command);
+        }
+
+        public static int PlayerIdOf(NetPeer peer) => peer.Id + 1;
+
+        public void SendToAllClientsExcept(NetPeer exclude, CommandBase message)
+        {
+            _netManager.SendToAll(CommandInternal.Instance.Serialize(message), DeliveryMethod.ReliableOrdered, exclude);
         }
 
         private void ListenerOnPeerConnectedEvent(NetPeer peer)
@@ -253,7 +275,23 @@ namespace CS2M.Networking
             Log.Trace($"NetworkManager: OnPeerDisconnectedEvent [PeerId: {peer.Id}]");
             if (NetworkInterface.Instance.LocalPlayer.PlayerType == PlayerType.CLIENT)
             {
-                // TODO: Use disconnect info
+                // a kick or ban carries its reason as a string
+                if (disconnectInfo.Reason == DisconnectReason.RemoteConnectionClose ||
+                    disconnectInfo.Reason == DisconnectReason.ConnectionRejected)
+                {
+                    try
+                    {
+                        if (disconnectInfo.AdditionalData != null && disconnectInfo.AdditionalData.AvailableBytes > 0)
+                        {
+                            NetworkInterface.DisconnectNotice = disconnectInfo.AdditionalData.GetString();
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // a plain disconnect has no reason
+                    }
+                }
+
                 ClientDisconnectEvent?.Invoke();
             }
             else if (NetworkInterface.Instance.LocalPlayer.PlayerType == PlayerType.SERVER)
@@ -298,6 +336,15 @@ namespace CS2M.Networking
         private void ListenerOnConnectionRequestEvent(ConnectionRequest request)
         {
             Log.Trace("NetworkManager: OnConnectionRequestEvent");
+            if (NetworkInterface.Instance.IsBanned(request.RemoteEndPoint.Address))
+            {
+                Log.Info("Connection refused: banned by the host");
+                var reason = new LiteNetLib.Utils.NetDataWriter();
+                reason.Put("You are banned from this session");
+                request.Reject(reason);
+                return;
+            }
+
             request.AcceptIfKey(ConnectionKey);
         }
 

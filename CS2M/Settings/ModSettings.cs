@@ -57,6 +57,10 @@ namespace CS2M.Settings
         [SettingsUIHidden]
         public bool HudCollapsed { get; set; }
 
+        // Addresses the host has banned, ';'-separated. Stays on this PC.
+        [SettingsUIHidden]
+        public string BannedAddresses { get; set; }
+
         public ModSettings(IMod mod) : base(mod)
         {
             SetDefaults();

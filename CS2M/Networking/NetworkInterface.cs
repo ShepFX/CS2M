@@ -47,6 +47,93 @@ namespace CS2M.Networking
 
         public static NetworkInterface Instance => _instance ??= new NetworkInterface();
 
+        /// <summary>
+        ///     Why the host disconnected us (kicked/banned), shown once in the HUD; null when there's nothing to show.
+        /// </summary>
+        public static string DisconnectNotice;
+
+        // Banned addresses stay on the host's PC (saved in its mod settings) and are never sent anywhere
+        private readonly HashSet<string> _bannedAddresses = new();
+        private bool _bansLoaded;
+
+        public bool IsBanned(System.Net.IPAddress address)
+        {
+            LoadBans();
+            return address != null && _bannedAddresses.Contains(address.ToString());
+        }
+
+        /// <summary>
+        ///     Host only: disconnects a player (by the id the host stamps on their messages), optionally banning
+        ///     their address so they can't rejoin. Returns the player's name, or null if not found.
+        /// </summary>
+        public string Kick(int playerId, bool ban)
+        {
+            if (LocalPlayer.PlayerType != PlayerType.SERVER)
+            {
+                return null;
+            }
+
+            RemotePlayer player = PlayerListConnected.OfType<RemotePlayer>()
+                .FirstOrDefault(p => p.NetPeer != null && NetworkManager.PlayerIdOf(p.NetPeer) == playerId);
+            if (player == null)
+            {
+                return null;
+            }
+
+            if (ban)
+            {
+                LoadBans();
+                _bannedAddresses.Add(player.NetPeer.Address.ToString());
+                SaveBans();
+            }
+
+            var reason = new LiteNetLib.Utils.NetDataWriter();
+            reason.Put(ban ? "You were banned by the host" : "You were kicked by the host");
+            player.NetPeer.Disconnect(reason);
+            Log.Info($"{(ban ? "Banned" : "Kicked")} {player.Username}");
+            return player.Username;
+        }
+
+        public int BanCount
+        {
+            get
+            {
+                LoadBans();
+                return _bannedAddresses.Count;
+            }
+        }
+
+        public void ClearBans()
+        {
+            _bannedAddresses.Clear();
+            SaveBans();
+        }
+
+        private void LoadBans()
+        {
+            if (_bansLoaded || Mod.Instance?.Settings == null)
+            {
+                return;
+            }
+
+            _bansLoaded = true;
+            foreach (string address in (Mod.Instance.Settings.BannedAddresses ?? "").Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                _bannedAddresses.Add(address);
+            }
+        }
+
+        private void SaveBans()
+        {
+            if (Mod.Instance?.Settings == null)
+            {
+                return;
+            }
+
+            Mod.Instance.Settings.BannedAddresses = string.Join(";", _bannedAddresses);
+            Mod.Instance.Settings.ApplyAndSave();
+        }
+
         private const double ResyncCooldown = 15;
 
         // players waiting for the city; see SendWorld

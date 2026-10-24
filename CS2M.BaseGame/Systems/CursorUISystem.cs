@@ -81,9 +81,10 @@ namespace CS2M.BaseGame.Systems
                 var sb = new StringBuilder("[");
                 sb.Append("{\"n\":\"").Append(Escape((CS2M.API.Commands.Command.GetLocalUsername?.Invoke() ?? "You") + role))
                     .Append("\",\"c\":\"#D6FF3F\",\"a\":\"\",\"me\":true}");
-                foreach (CursorSystem.RemoteCursor cursor in CursorSystem.Remote.Values)
+                foreach (System.Collections.Generic.KeyValuePair<int, CursorSystem.RemoteCursor> pair in CursorSystem.Remote)
                 {
-                    sb.Append(",{\"n\":\"").Append(Escape(cursor.Name))
+                    CursorSystem.RemoteCursor cursor = pair.Value;
+                    sb.Append(",{\"id\":").Append(pair.Key).Append(",\"n\":\"").Append(Escape(cursor.Name))
                         .Append("\",\"c\":\"#").Append(ColorUtility.ToHtmlStringRGB(cursor.Color))
                         .Append("\",\"a\":\"").Append(Escape(cursor.Activity)).Append("\",\"me\":false}");
                 }
